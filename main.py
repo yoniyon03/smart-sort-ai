@@ -1,3 +1,4 @@
+# 학습용
 # 전이학습 코드
 from ultralytics import YOLO
 import torch, os
