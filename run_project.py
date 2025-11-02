@@ -5,11 +5,11 @@ import numpy as np
 import glob
 import time  # time 모듈
 
-# utils 폴더에서 우리가 만든 모듈을 가져옵니다.
+# utils 폴더에서 우리가 만든 모듈을 가져옴
 from utils.ocr_module import run_ocr
 from utils.hsv_module import get_color
 
-# --- ⚠️ 중요: PROJECT_ROOT 정의 (파일 상단) ---
+# --- PROJECT_ROOT 정의 (파일 상단) ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 1. 학습된 모델 경로
@@ -28,12 +28,8 @@ print(f"[INFO] Model loaded. Classes: {CLASS_NAMES}")
 
 
 # --- 경로 설정 끝 ---
-
-
 def process_image(image_path, conf_threshold=0.7):
-    """
-    (이 함수는 '슬리퍼'를 인식하게 된 최종 수정본입니다 - 수정 X)
-    """
+
     if not os.path.exists(image_path):
         print(f"[ERROR] 이미지 파일을 찾을 수 없습니다: {image_path}")
         return None, None
@@ -85,7 +81,7 @@ def process_image(image_path, conf_threshold=0.7):
                 print(f"[WARN] Failed to preprocess image for OCR: {e}")
                 continue
 
-                # --- 2. 임시 파일로 저장 (이진화된 이미지) ---
+            # --- 2. 임시 파일로 저장 (이진화된 이미지) ---
             temp_crop_path = os.path.join(PROJECT_ROOT, "temp_ocr_image.jpg")
             cv2.imwrite(temp_crop_path, binary_img)
 
@@ -114,16 +110,16 @@ def process_image(image_path, conf_threshold=0.7):
             print(f"[YOLO] Found 'objects' (Conf: {conf * 100:.0f}%)")
             final_data["object_type"] = "Box"
 
-    # --- (수정) 렉 안 걸리게 True 대신, '결과 이미지'를 반환 ---
+    # --- 렉 안 걸리게 True 대신, 결과 이미지 반환 ---
     return result.plot(), final_data
 
 
-# --- ⚠️ 메인 실행 (결과 이미지를 폴더에 저장하는 로직) ---
+# --- 메인 실행 (결과 이미지를 폴더에 저장하는 로직) ---
 if __name__ == "__main__":
 
     WATCH_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
 
-    # --- 1. (추가) 결과 저장용 폴더 지정 ---
+    # --- 1. 결과 저장용 폴더 지정 ---
     OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_ocr")
     # 폴더가 없으면 자동 생성
     os.makedirs(OUTPUT_FOLDER, exist_ok=True)
@@ -150,14 +146,14 @@ if __name__ == "__main__":
                 print(f"\n[INFO] {len(new_files)}개의 새 이미지를 감지했습니다. 처리를 시작합니다...")
                 for image_path in new_files:
 
-                    # --- 2. (수정) annotated_image 변수 다시 받기 ---
+                    # --- 2. annotated_image 변수 다시 받기 ---
                     annotated_image, extracted_data = process_image(image_path, conf_threshold=0.45)  # (45% 유지)
 
                     if annotated_image is not None:
                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
                         print(extracted_data)
 
-                        # --- 3. (수정) 렉 걸리는 창 띄우기 대신 파일로 저장 ---
+                        # --- 3. 렉 걸리는 창 띄우기 대신 파일로 저장 ---
                         try:
                             # 원본 파일명 + "_result.jpg"로 저장
                             base_name = os.path.basename(image_path)
@@ -180,5 +176,4 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n[INFO] 감시를 종료합니다.")
     finally:
-        # (창을 안 띄웠으니 닫을 필요 없음)
         print("[INFO] 프로그램이 종료되었습니다.")

@@ -10,15 +10,12 @@ SAVE_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
 os.makedirs(SAVE_FOLDER, exist_ok=True)
 
 
-# -----------------------------------------------
-
 def main_capture():
-    # --- 2. (수정) M2 맥북의 USB 카메라는 1번 또는 2번입니다. ---
-    # 0번은 내장 FaceTime 카메라입니다.
+    # --- 2. capture ---
+    # 0번 - 나영 iPhone
+    # 1번 - 나영 맥북 내장 카메라
     CAMERA_INDEX = 0
     cap = cv2.VideoCapture(CAMERA_INDEX)
-    # (만약 1번도 안 되면 이 숫자를 2로 바꿔서 다시 실행해보세요)
-    # -----------------------------------------------
 
     if not cap.isOpened():
         print(f"[ERROR] {CAMERA_INDEX}번 카메라를 열 수 없습니다.")
@@ -33,7 +30,7 @@ def main_capture():
 
     try:
         while True:
-            # --- 3. (수정) 'c' 키 대신 Enter 키 입력 대기 ---
+            # --- 3. 'c' 키 대신 Enter 키 입력 대기 ---
             user_input = input()  # 여기서 Enter 입력을 기다림
 
             if user_input.lower() == 'q':
@@ -62,7 +59,6 @@ def main_capture():
         # 7. 종료 시 카메라 닫기
         print("[INFO] 카메라를 종료합니다.")
         cap.release()
-        # cv2.imshow()를 안 썼기 때문에 cv2.destroyAllWindows()도 필요 없음
 
 
 if __name__ == "__main__":

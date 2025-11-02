@@ -1,10 +1,8 @@
-# utils/ocr_module.py
-
 from paddleocr import PaddleOCR
 import cv2
 import os
 
-# --- 모델 로드 (수정 X) ---
+# --- 모델 로드 ---
 try:
     print("[INFO] Loading PaddleOCR 'korean' model...")
     ocr = PaddleOCR(
@@ -18,10 +16,7 @@ except Exception as e:
 
 
 def run_ocr(image_path):
-    """
-    이미지 *경로*를 입력받아 OCR을 수행하고,
-    추출된 텍스트들을 리스트로 반환합니다.
-    """
+    # 이미지 *경로*를 입력받아 OCR을 수행, 추출된 텍스트들을 리스트로 반환
     if ocr is None:
         print("[ERROR] OCR model is not loaded.")
         return []
@@ -37,8 +32,7 @@ def run_ocr(image_path):
 
     extracted_texts = []
 
-    # --- ⚠️ 1. (수정) 여기가 오류난 부분이었습니다! ---
-    # PaddleOCR의 새 결과 포맷(dict)을 파싱하도록 수정합니다.
+    # PaddleOCR의 새 결과 포맷(dict)을 파싱하도록 수정
     try:
         if result and isinstance(result, list) and len(result) > 0:
             # result[0]은 이제 리스트가 아니라 딕셔너리입니다.
@@ -63,12 +57,11 @@ def run_ocr(image_path):
     except Exception as e:
         print(f"[ERROR] Failed to parse OCR result: {e}")
         print(f"[ERROR] Crashing line_data was: {result}")  # 오류 내용 출력
-    # --- ⚠️ 2. (수정 끝) ---
 
     return extracted_texts
 
 
-# --- 테스트용 코드 (수정 X) ---
+# --- 테스트용 코드 ---
 if __name__ == "__main__":
     test_image_path = os.path.join(os.path.dirname(__file__), "../test_originals/IMG_2070.jpg")
 
