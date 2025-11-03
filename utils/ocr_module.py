@@ -14,6 +14,7 @@ except Exception as e:
     ocr = None
 
 
+# PaddleOCR한테 임시 파일(temp_ocr_image.jpg) 분석하라고 시킴
 def run_ocr(image_path):
     # 이미지 경로를 입력받아 OCR을 수행, 추출된 텍스트들을 리스트로 반환
     if ocr is None:
@@ -29,7 +30,9 @@ def run_ocr(image_path):
 
     extracted_texts = []
 
-    # PaddleOCR의 새 결과 포맷(dict)을 파싱하도록 수정
+    # PaddleOCR이 ['객체 이름']와 ['정확도']처럼 복잡한 딕셔너리(dict) 형식으로 결과를 주는데,
+    # 이 부분을 파싱(parsing)해서 extracted_texts.append(text): ['객체 이름'] 이라는
+    # 깔끔한 파이썬 리스트로 만들어 run_project.py에게 둘려줌
     try:
         if result and isinstance(result, list) and len(result) > 0:
             result_data = result[0]

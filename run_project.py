@@ -9,7 +9,7 @@ from utils.hsv_module import get_color
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-# 1. 학습된 모델 경로
+# 1. main.py가 만든 학습된 모델 경로 로드
 TRAINED_MODEL_PATH = "/Users/skdod/runs/detect/train10/weights/best.pt"
 
 # 2. 모델 로드
@@ -24,7 +24,7 @@ CLASS_NAMES = model.names
 print(f"[INFO] Model loaded. Classes: {CLASS_NAMES}")
 
 
-# --- 경로 설정 끝 ---
+# 사진 1장 들어왔을 때 처리하는 과정
 def process_image(image_path, conf_threshold=0.7):
 
     if not os.path.exists(image_path):
@@ -55,18 +55,22 @@ def process_image(image_path, conf_threshold=0.7):
         cls_index = int(box.cls[0].item())
         class_name = CLASS_NAMES[cls_index]
 
+        # 설정한 정확도(conf_threshold) 미만이면 [SKIP]-무시
         if conf < conf_threshold:
             print(f"[SKIP] Found '{class_name}' but confidence is too low ({conf * 100:.0f}%)")
             continue
 
+        # AI가 축소된 사진에서 찾은 위치를 비율로 받음
         nx1, ny1, nx2, ny2 = box.xyxyn[0].tolist()
         x1 = int(nx1 * orig_w)
         y1 = int(ny1 * orig_h)
         x2 = int(nx2 * orig_w)
         y2 = int(ny2 * orig_h)
 
+        # 고해상도 원본 크기에 곱해서 정확한 픽셀 좌표 계산
         cropped_img = original_image[y1:y2, x1:x2]
 
+        # 잘라낸 이미지를 흑백으로 만들어 temp_ocr_image.jpg 임시 파일로 저장
         if class_name == 'marker_text':
             print(f"[YOLO] Found 'marker_text' (Conf: {conf * 100:.0f}%). Sending to OCR...")
 
@@ -97,6 +101,7 @@ def process_image(image_path, conf_threshold=0.7):
             except Exception as e:
                 print(f"[WARN] Failed to remove temp crop file: {e}")
 
+        # 잘라낸 이미지(컬러 원본)를 get_color로 넘겨 색 이름을 알아옴
         elif class_name == 'marker_color':
             print(f"[YOLO] Found 'marker_color' (Conf: {conf * 100:.0f}%). Sending to HSV...")
             detected_color = get_color(cropped_img)

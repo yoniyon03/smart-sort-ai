@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-
+# run_project.py로부터 marker_color 스티커의 컬러 원본(BGR) 이미지를 받아옴
 def get_color(image_array):
     """
     잘라낸 이미지를 받아 HSV로 변환,

@@ -2,6 +2,7 @@
 from ultralytics import YOLO
 import torch, os
 
+# 코드를 실행하는 컴퓨터 OS 파악해 훈련에 가장 빠른 장치 선택
 def pick_device():
     if torch.cuda.is_available():
         return "cuda"
@@ -11,7 +12,8 @@ def pick_device():
     return "cpu"
 
 def main():
-    data_yaml = "./data.yaml"  # 필요하면 절대경로로 수정
+    # dataset 폴더에 있는 이미지를 AI에게 보여줌
+    data_yaml = "./data.yaml"
     device = pick_device()
     print(f"[INFO] Using device: {device}")
 
