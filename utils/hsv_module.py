@@ -1,7 +1,6 @@
 import cv2
-import numpy as np
 
-# run_project.py로부터 marker_color 스티커의 컬러 원본(BGR) 이미지를 받아옴
+
 def get_color(image_array):
     """
     잘라낸 이미지를 받아 HSV로 변환,
@@ -18,7 +17,7 @@ def get_color(image_array):
     s_val = hsv_image[:, :, 1].mean()  # 평균 S (채도)
     v_val = hsv_image[:, :, 2].mean()  # 평균 V (명도)
 
-    # --- 1. 여기서 H,S,V 값을 직접 출력! ---
+    # --- 1. 디버그 로그 ---
     print(f"\n[DEBUG-HSV] ---------------------------------")
     print(f"[DEBUG-HSV] 크롭된 이미지의 평균 H={h_val:.2f}, S={s_val:.2f}, V={v_val:.2f}")
     # ---------------------------------------------
@@ -28,53 +27,25 @@ def get_color(image_array):
         print("[DEBUG-HSV] 판정: 채도/명도 낮음 -> GRAY/BLACK/WHITE")
         return "GRAY/BLACK/WHITE"
 
-        # 4. H(색상) 값으로 색상 판단
-    h_val = hsv_image[:, :, 0].mean()
+    # 4. H(색상) 값으로 색상 판단
     color_name = "Unknown"
 
-    # # 조명 있다고 가정? (보정 X)
-    # if (0 <= h_val <= 10) or (170 <= h_val <= 179):
-    #     color_name = "RED"
-    # elif 11 <= h_val <= 25:
-    #     color_name = "ORANGE"
-    # elif 26 <= h_val <= 34:
-    #     color_name = "YELLOW"
-    # elif 35 <= h_val <= 75:
-    #     color_name = "GREEN"
-    # elif 76 <= h_val <= 130:
-    #     color_name = "BLUE"
-    # elif 131 <= h_val <= 169:
-    #     color_name = "PURPLE/PINK"
-
-    # 보정
+    # --- 4가지 색상 전용 범위 ---
     if (0 <= h_val <= 10) or (170 <= h_val <= 179):
         color_name = "RED"
-    elif 11 <= h_val <= 25:
-        color_name = "ORANGE"
-    elif 26 <= h_val <= 34:
+
+    elif 25 <= h_val <= 40:
         color_name = "YELLOW"
 
-    # --- "GREEN" 범위를 110까지 늘림 ---
-    elif 35 <= h_val <= 110:
+    elif 60 <= h_val <= 90:
         color_name = "GREEN"
 
-    # --- "BLUE" 시작을 111부터로 미룸 ---
-    elif 111 <= h_val <= 130:
+    elif 100 <= h_val <= 130:
         color_name = "BLUE"
+    # -----------------------------------------------
 
-    elif 131 <= h_val <= 169:
-        color_name = "PURPLE/PINK"
-
-    # --- 최종 판정 결과도 출력 ---
+    # --- 5. 최종 판정 결과도 출력 ---
     print(f"[DEBUG-HSV] H 값({h_val:.2f}) -> 최종 판정: {color_name}")
     print(f"[DEBUG-HSV] ---------------------------------\n")
-    # ----------------------------------------
 
     return color_name
-
-# # --- 테스트할 때만 실행 ---
-# if __name__ == "__main__":
-#     test_blue_img = np.zeros((100, 100, 3), dtype=np.uint8)
-#     test_blue_img[:] = (255, 0, 0)
-#     color = get_color(test_blue_img)
-#     print(f"Test Image 1 (Blue) -> Detected: {color}")
