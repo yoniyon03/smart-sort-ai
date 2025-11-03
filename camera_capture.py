@@ -43,7 +43,7 @@ def main_capture():
                 print("[ERROR] 카메라에서 프레임을 읽을 수 없습니다.")
                 continue
 
-            # 5. 파일 이름 (타임스탬프)
+            # 5. 파일 이름
             filename = f"capture_{int(time.time())}.jpg"
             save_path = os.path.join(SAVE_FOLDER, filename)
 

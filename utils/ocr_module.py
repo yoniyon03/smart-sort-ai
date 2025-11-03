@@ -2,7 +2,6 @@ from paddleocr import PaddleOCR
 import cv2
 import os
 
-# --- 모델 로드 ---
 try:
     print("[INFO] Loading PaddleOCR 'korean' model...")
     ocr = PaddleOCR(
@@ -16,7 +15,7 @@ except Exception as e:
 
 
 def run_ocr(image_path):
-    # 이미지 *경로*를 입력받아 OCR을 수행, 추출된 텍스트들을 리스트로 반환
+    # 이미지 경로를 입력받아 OCR을 수행, 추출된 텍스트들을 리스트로 반환
     if ocr is None:
         print("[ERROR] OCR model is not loaded.")
         return []
@@ -28,14 +27,11 @@ def run_ocr(image_path):
     print(f"[DEBUG-OCR] Predicting text from file: {image_path}")
     result = ocr.predict(input=image_path)
 
-    print(f"[DEBUG-OCR] Raw result from PaddleOCR: {result}")
-
     extracted_texts = []
 
     # PaddleOCR의 새 결과 포맷(dict)을 파싱하도록 수정
     try:
         if result and isinstance(result, list) and len(result) > 0:
-            # result[0]은 이제 리스트가 아니라 딕셔너리입니다.
             result_data = result[0]
 
             # 딕셔너리 안에 'rec_texts'와 'rec_scores'가 있는지 확인
@@ -46,7 +42,7 @@ def run_ocr(image_path):
                     print(f"[DEBUG-OCR] Found text: '{text}' with confidence: {confidence}")
                     extracted_texts.append(text)
 
-            # (예외 처리) 혹시라도 예전 포맷으로 나올 경우
+            # 혹시라도 예전 포맷으로 나올 경우
             elif isinstance(result_data, list):
                 for line_data in result_data:
                     text = line_data[1][0]
@@ -62,13 +58,13 @@ def run_ocr(image_path):
 
 
 # --- 테스트용 코드 ---
-if __name__ == "__main__":
-    test_image_path = os.path.join(os.path.dirname(__file__), "../test_originals/IMG_2070.jpg")
-
-    if os.path.exists(test_image_path):
-        print(f"--- Running OCR test on {test_image_path} ---")
-        texts = run_ocr(test_image_path)
-        print(f"--- OCR Test Done ---")
-        print(f"All Extracted Text: {texts}")
-    else:
-        print(f"[ERROR] Test image not found: {test_image_path}")
+# if __name__ == "__main__":
+#     test_image_path = os.path.join(os.path.dirname(__file__), "../test_originals/테스트할이미지파일명")
+#
+#     if os.path.exists(test_image_path):
+#         print(f"--- Running OCR test on {test_image_path} ---")
+#         texts = run_ocr(test_image_path)
+#         print(f"--- OCR Test Done ---")
+#         print(f"All Extracted Text: {texts}")
+#     else:
+#         print(f"[ERROR] Test image not found: {test_image_path}")

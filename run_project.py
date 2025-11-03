@@ -3,19 +3,17 @@ import cv2
 import os
 import numpy as np
 import glob
-import time  # time 모듈
+import time
 
-# utils 폴더에서 우리가 만든 모듈을 가져옴
 from utils.ocr_module import run_ocr
 from utils.hsv_module import get_color
 
-# --- PROJECT_ROOT 정의 (파일 상단) ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
 # 1. 학습된 모델 경로
 TRAINED_MODEL_PATH = "/Users/skdod/runs/detect/train10/weights/best.pt"
 
-# 2. 모델 로드 (한 번만)
+# 2. 모델 로드
 if not os.path.exists(TRAINED_MODEL_PATH):
     print(f"[ERROR] 모델 파일을 찾을 수 없습니다: {TRAINED_MODEL_PATH}")
     print("[INFO] 'main.py'를 실행하여 모델을 먼저 학습시키세요.")
@@ -113,23 +111,25 @@ def process_image(image_path, conf_threshold=0.7):
     # --- 렉 안 걸리게 True 대신, 결과 이미지 반환 ---
     return result.plot(), final_data
 
-
-# --- 메인 실행 (결과 이미지를 폴더에 저장하는 로직) ---
 if __name__ == "__main__":
 
     WATCH_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
 
-    # --- 1. 결과 저장용 폴더 지정 ---
-    OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_ocr")
-    # 폴더가 없으면 자동 생성
-    os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+    # --- 1. 결과 저장용 폴더를 2개로 분리 ---
+    OCR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_ocr")
+    COLOR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_color")
+
+    # 폴더 2개 모두 생성
+    os.makedirs(OCR_OUTPUT_FOLDER, exist_ok=True)
+    os.makedirs(COLOR_OUTPUT_FOLDER, exist_ok=True)
     # ------------------------------------
 
     processed_files = set()
 
     print(f"==================================================")
     print(f"[INFO] '{WATCH_FOLDER}' 폴더를 감시합니다...")
-    print(f"[INFO] 결과는 '{OUTPUT_FOLDER}' 폴더에 저장됩니다.")
+    print(f"[INFO] 텍스트 결과는 'test_originals_ocr' 폴더에 저장됩니다.")
+    print(f"[INFO] 색상 결과는 'test_originals_color' 폴더에 저장됩니다.")
     print(f"[INFO] (종료하려면 터미널에서 Ctrl + C 를 누르세요)")
     print(f"==================================================")
 
@@ -146,24 +146,36 @@ if __name__ == "__main__":
                 print(f"\n[INFO] {len(new_files)}개의 새 이미지를 감지했습니다. 처리를 시작합니다...")
                 for image_path in new_files:
 
-                    # --- 2. annotated_image 변수 다시 받기 ---
-                    annotated_image, extracted_data = process_image(image_path, conf_threshold=0.45)  # (45% 유지)
+                    # 70% 기준으로 설정 (0.45로 낮춰도 됨)
+                    annotated_image, extracted_data = process_image(image_path, conf_threshold=0.6)
 
                     if annotated_image is not None:
                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
                         print(extracted_data)
 
-                        # --- 3. 렉 걸리는 창 띄우기 대신 파일로 저장 ---
-                        try:
-                            # 원본 파일명 + "_result.jpg"로 저장
-                            base_name = os.path.basename(image_path)
-                            save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
-                            save_path = os.path.join(OUTPUT_FOLDER, save_name)
+                        # --- 2. 렉 걸리는 창 띄우기 대신 파일로 저장 ---
+                        base_name = os.path.basename(image_path)
+                        save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
+                        save_path = None  # 저장 경로 초기화
 
-                            cv2.imwrite(save_path, annotated_image)
-                            print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
-                        except Exception as e:
-                            print(f"[ERROR] 결과 이미지 저장 실패: {e}")
+                        # --- 3. 결과 데이터에 따라 저장 경로 결정 ---
+                        # (텍스트가 인식되었다면)
+                        if extracted_data.get("text"):
+                            save_path = os.path.join(OCR_OUTPUT_FOLDER, save_name)
+                        # (텍스트는 없지만 색상이 인식되었다면)
+                        elif extracted_data.get("color"):
+                            save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
+                        # ---------------------------------------------
+
+                        # (저장 경로가 정해졌다면)
+                        if save_path:
+                            try:
+                                cv2.imwrite(save_path, annotated_image)
+                                print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
+                            except Exception as e:
+                                print(f"[ERROR] 결과 이미지 저장 실패: {e}")
+                        else:
+                            print("[INFO] 텍스트나 색상이 감지되지 않아 결과 이미지를 저장하지 않습니다.")
                         # -----------------------------------------------
 
                     else:

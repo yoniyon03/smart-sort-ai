@@ -1,9 +1,9 @@
-# ** HSV 채널 분석 및 시각화용 코드 **
+# 특정 이미지의 HSV 가 어떻게 추출 되는지 체크하는 코드
 import cv2
 import numpy as np
 
 # 테스트용 이미지 경로 (본인 이미지로 바꿔도 됨)
-def show_hsv(img_path="images/test_colors.jpg"):
+def show_hsv(img_path="../test_originals/IMG_1750.jpg"):
     # 이미지 불러오기 (BGR)
     bgr = cv2.imread(img_path)
     if bgr is None:

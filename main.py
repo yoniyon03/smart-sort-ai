@@ -11,7 +11,7 @@ def pick_device():
     return "cpu"
 
 def main():
-    data_yaml = "./data.yaml"  # <- 필요하면 절대경로로 수정
+    data_yaml = "./data.yaml"  # 필요하면 절대경로로 수정
     device = pick_device()
     print(f"[INFO] Using device: {device}")
 
@@ -22,11 +22,11 @@ def main():
     results = model.train(
         data=data_yaml,
         imgsz=640,
-        epochs=50,         # 데이터 적으면 50~80, 많으면 100+
-        batch=16,          # GPU 메모리 부족하면 8로
+        epochs=50,
+        batch=16,
         device=device,
-        patience=0,       # early stopping 여유 (0으로 하면 early stopping X)
-        freeze=10          # 데이터 적을 때 백본 일부 고정; 많으면 0
+        patience=0,
+        freeze=10
     )
     print("[INFO] Train done. Best metrics:", results.results_dict)
 
