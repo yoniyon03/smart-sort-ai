@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 
 # 테스트용 이미지 경로 (본인 이미지로 바꿔도 됨)
-def show_hsv(img_path="../test_originals/IMG_1750.jpg"):
+def show_hsv(img_path="../test_originals"):
     # 이미지 불러오기 (BGR)
     bgr = cv2.imread(img_path)
     if bgr is None:

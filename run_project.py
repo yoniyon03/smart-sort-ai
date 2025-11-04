@@ -25,7 +25,7 @@ print(f"[INFO] Model loaded. Classes: {CLASS_NAMES}")
 
 
 # 사진 1장 들어왔을 때 처리하는 과정
-def process_image(image_path, conf_threshold=0.7):
+def process_image(image_path, conf_threshold=0.6):
 
     if not os.path.exists(image_path):
         print(f"[ERROR] 이미지 파일을 찾을 수 없습니다: {image_path}")
@@ -110,7 +110,7 @@ def process_image(image_path, conf_threshold=0.7):
 
         elif class_name == 'objects':
             print(f"[YOLO] Found 'objects' (Conf: {conf * 100:.0f}%)")
-            final_data["object_type"] = "Box"
+            final_data["object_type"] = "object"
 
     # --- 렉 안 걸리게 True 대신, 결과 이미지 반환 ---
     return result.plot(), final_data
