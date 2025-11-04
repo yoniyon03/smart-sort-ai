@@ -14,6 +14,7 @@ def main_capture():
     # --- 2. capture ---
     # 0번 - 나영 iPhone
     # 1번 - 나영 맥북 내장 카메라
+    # 2번 - 아두이노
     CAMERA_INDEX = 0
     cap = cv2.VideoCapture(CAMERA_INDEX)
 
