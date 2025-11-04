@@ -14,7 +14,7 @@
 #     # --- 2. capture ---
 #     # 0번 - 나영 iPhone
 #     # 1번 - 나영 맥북 내장 카메라
-#     # 2번 - 아두이노
+#     # 2번 - USB 카메라
 #     CAMERA_INDEX = 1
 #     cap = cv2.VideoCapture(CAMERA_INDEX)
 #
@@ -85,6 +85,9 @@ ARDUINO_PORT = "/dev/cu.usbmodem1101"
 # (아두이노 코드의 Serial.begin(115200)과 일치)
 BAUD_RATE = 115200
 
+# 0번 - 나영 iPhone
+# 1번 - 나영 맥북 내장 카메라
+# 2번 - USB 카메라
 CAMERA_INDEX = 1
 
 
