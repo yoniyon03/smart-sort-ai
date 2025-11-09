@@ -1,4 +1,5 @@
 # 학습용 - 전이학습 코드
+
 from ultralytics import YOLO
 import torch, os
 
@@ -23,9 +24,9 @@ def main():
     # 2) 전이학습(Transfer Learning)
     results = model.train(
         data=data_yaml,
-        imgsz=640,
+        imgsz=960,          # 640 --> 960 수정 (이미지 크기 너무 작으면 인식 잘 안 됨)
         epochs=50,
-        batch=16,
+        batch=8,            # imgsz 960으로 늘리면서 batch도 16 --> 8로 수정 (메모리 부족 방지)
         device=device,
         patience=0,
         freeze=10
