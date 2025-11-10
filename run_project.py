@@ -106,13 +106,15 @@ def process_image(image_path, conf_threshold=0.6):
 #
 #     WATCH_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
 #
-#     # 결과 저장용 폴더를 2개로 분리
+#     # 결과 저장용 폴더를 3개로 분리
 #     OCR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_ocr")
 #     COLOR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_color")
+#     ERROR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_error")  # 예외 폴더 추가
 #
-#     # 폴더 2개 모두 생성
+#     # 폴더 3개 모두 생성
 #     os.makedirs(OCR_OUTPUT_FOLDER, exist_ok=True)
 #     os.makedirs(COLOR_OUTPUT_FOLDER, exist_ok=True)
+#     os.makedirs(ERROR_OUTPUT_FOLDER, exist_ok=True)  # 예외 폴더 생성
 #
 #     processed_files = set()
 #
@@ -120,13 +122,14 @@ def process_image(image_path, conf_threshold=0.6):
 #     print(f"[INFO] '{WATCH_FOLDER}' 폴더를 감시합니다...")
 #     print(f"[INFO] 텍스트 결과는 'test_originals_ocr' 폴더에 저장됩니다.")
 #     print(f"[INFO] 색상 결과는 'test_originals_color' 폴더에 저장됩니다.")
+#     print(f"[INFO] 예외(70% 미만) 결과는 'test_originals_error' 폴더에 저장됩니다.")  # <-- 로그 추가
 #     print(f"[INFO] (종료하려면 터미널에서 Ctrl + C 를 누르세요)")
 #     print(f"==================================================")
 #
 #     try:
 #         while True:
 #             current_files = set()
-#             image_types = ("*.jpg", "*.jpeg", "*.png")
+#             image_types = ("*.jpg", "*.jpeg", "*.png", "*.JPG", "*.JPEG", "*.PNG")
 #             for img_type in image_types:
 #                 current_files.update(glob.glob(os.path.join(WATCH_FOLDER, img_type)))
 #
@@ -136,32 +139,41 @@ def process_image(image_path, conf_threshold=0.6):
 #                 print(f"\n[INFO] {len(new_files)}개의 새 이미지를 감지했습니다. 처리를 시작합니다...")
 #                 for image_path in new_files:
 #
-#                     # 컷오프 60% (0.6) 기준으로 설정
-#                     annotated_image, extracted_data = process_image(image_path, conf_threshold=0.6)
+#                     annotated_image, extracted_data = process_image(image_path, conf_threshold=0.7)
 #
 #                     if annotated_image is not None:
 #                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
 #                         print(extracted_data)
 #
-#                         # 파일로 저장
+#                         # 렉 걸리는 창 띄우기 대신 파일로 저장
 #                         base_name = os.path.basename(image_path)
 #                         save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
 #                         save_path = None  # 저장 경로 초기화
 #
 #                         # 결과 데이터에 따라 저장 경로 결정
+#                         # 텍스트가 인식되었다면
 #                         if extracted_data.get("text"):
 #                             save_path = os.path.join(OCR_OUTPUT_FOLDER, save_name)
+#                         # 텍스트는 없지만 색상이 인식되었다면
 #                         elif extracted_data.get("color"):
 #                             save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
+#                         # 텍스트/색상 둘 다 인식 실패했다면 - 70% 미만 SKIP 등
+#                         else:
+#                             save_path = os.path.join(ERROR_OUTPUT_FOLDER, save_name)  # 예외 폴더로 저장
 #
+#                         # 저장 경로가 정해졌다면 이제 항상 저장
 #                         if save_path:
 #                             try:
 #                                 cv2.imwrite(save_path, annotated_image)
-#                                 print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
+#
+#                                 # 저장 위치에 따라 다른 로그 출력
+#                                 if extracted_data.get("text") or extracted_data.get("color"):
+#                                     print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
+#                                 else:
+#                                     print(f"[INFO] 예외 항목(70% 미만) 이미지를 '{save_path}'에 저장했습니다.")
+#
 #                             except Exception as e:
 #                                 print(f"[ERROR] 결과 이미지 저장 실패: {e}")
-#                         else:
-#                             print("[INFO] 텍스트나 색상이 감지되지 않아 결과 이미지를 저장하지 않습니다.")
 #
 #                     else:
 #                         print(f"[WARN] '{image_path}' 처리에 실패했습니다.")
@@ -179,23 +191,26 @@ if __name__ == "__main__":
 
     WATCH_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
 
-    # 결과 저장용 폴더를 3개로 분리
+    # 결과 저장용 폴더 3개
     OCR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_ocr")
     COLOR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_color")
-    ERROR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_error")  # 예외 폴더 추가
+    ERROR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_error")
 
     # 폴더 3개 모두 생성
     os.makedirs(OCR_OUTPUT_FOLDER, exist_ok=True)
     os.makedirs(COLOR_OUTPUT_FOLDER, exist_ok=True)
-    os.makedirs(ERROR_OUTPUT_FOLDER, exist_ok=True)  # 예외 폴더 생성
+    os.makedirs(ERROR_OUTPUT_FOLDER, exist_ok=True)
+
+    KNOWN_TEXTS = ['대형', '중형', '소형']
+    KNOWN_COLORS = ['RED', 'GREEN', 'BLUE', 'YELLOW']
 
     processed_files = set()
 
     print(f"==================================================")
     print(f"[INFO] '{WATCH_FOLDER}' 폴더를 감시합니다...")
-    print(f"[INFO] 텍스트 결과는 'test_originals_ocr' 폴더에 저장됩니다.")
-    print(f"[INFO] 색상 결과는 'test_originals_color' 폴더에 저장됩니다.")
-    print(f"[INFO] 예외(70% 미만) 결과는 'test_originals_error' 폴더에 저장됩니다.")  # <-- 로그 추가
+    print(f"[INFO] 텍스트({KNOWN_TEXTS}) 결과는 '..._ocr' 폴더에 저장됩니다.")
+    print(f"[INFO] 색상({KNOWN_COLORS}) 결과는 '..._color' 폴더에 저장됩니다.")
+    print(f"[INFO] 그 외 모든 예외 항목은 '..._error' 폴더에 저장됩니다.")
     print(f"[INFO] (종료하려면 터미널에서 Ctrl + C 를 누르세요)")
     print(f"==================================================")
 
@@ -212,41 +227,51 @@ if __name__ == "__main__":
                 print(f"\n[INFO] {len(new_files)}개의 새 이미지를 감지했습니다. 처리를 시작합니다...")
                 for image_path in new_files:
 
+                    # 컷오프를 70% (0.7)로 다시 복구
                     annotated_image, extracted_data = process_image(image_path, conf_threshold=0.7)
 
                     if annotated_image is not None:
                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
                         print(extracted_data)
 
-                        # 렉 걸리는 창 띄우기 대신 파일로 저장
+                        # "예외 분류" 저장 로직
                         base_name = os.path.basename(image_path)
                         save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
-                        save_path = None  # 저장 경로 초기화
 
-                        # 결과 데이터에 따라 저장 경로 결정
-                        # 텍스트가 인식되었다면
-                        if extracted_data.get("text"):
+                        # (일단 '예외'로 가정하고 시작)
+                        save_path = os.path.join(ERROR_OUTPUT_FOLDER, save_name)
+                        is_success = False
+
+                        detected_text = extracted_data.get("text")
+                        detected_color = extracted_data.get("color")
+
+                        # (조건 1) "알려진 텍스트"인가?
+                        if detected_text and detected_text in KNOWN_TEXTS:
                             save_path = os.path.join(OCR_OUTPUT_FOLDER, save_name)
-                        # 텍스트는 없지만 색상이 인식되었다면
-                        elif extracted_data.get("color"):
+                            is_success = True
+
+                        # (조건 2) "알려진 텍스트"는 아니지만, "알려진 색상"인가?
+                        elif (not detected_text) and (detected_color and detected_color in KNOWN_COLORS):
                             save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
-                        # 텍스트/색상 둘 다 인식 실패했다면 - 70% 미만 SKIP 등
-                        else:
-                            save_path = os.path.join(ERROR_OUTPUT_FOLDER, save_name)  # 예외 폴더로 저장
+                            is_success = True
 
-                        # 저장 경로가 정해졌다면 이제 항상 저장
-                        if save_path:
-                            try:
-                                cv2.imwrite(save_path, annotated_image)
+                        # (그 외 모든 경우)
+                        # - conf < 0.7
+                        # - color == 'Unknown'
+                        # - text == '해'
+                        # ... 는 모두 'is_success = False'가 되어 'ERROR_OUTPUT_FOLDER'에 저장됨
 
-                                # 저장 위치에 따라 다른 로그 출력
-                                if extracted_data.get("text") or extracted_data.get("color"):
-                                    print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
-                                else:
-                                    print(f"[INFO] 예외 항목(70% 미만) 이미지를 '{save_path}'에 저장했습니다.")
+                        # 파일 저장 및 로그
+                        try:
+                            cv2.imwrite(save_path, annotated_image)
 
-                            except Exception as e:
-                                print(f"[ERROR] 결과 이미지 저장 실패: {e}")
+                            if is_success:
+                                print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
+                            else:
+                                print(f"[INFO] 예외 항목(알 수 없는 텍스트/색상 또는 70% 미만) 이미지를 '{save_path}'에 저장했습니다.")
+
+                        except Exception as e:
+                            print(f"[ERROR] 결과 이미지 저장 실패: {e}")
 
                     else:
                         print(f"[WARN] '{image_path}' 처리에 실패했습니다.")
