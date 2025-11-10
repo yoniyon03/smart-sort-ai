@@ -1,4 +1,4 @@
-# # 아두이노 연결
+# 아두이노 연결
 # import cv2
 # import os
 # import time
@@ -74,7 +74,6 @@
 
 
 # enter 키 누를 때마다 사진 1장씩 찍히는 코드
-
 import cv2
 import os
 import time

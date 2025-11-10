@@ -53,7 +53,7 @@ import cv2, numpy as np
 # 각도(deg, 0~360) 기준 밴드
 BANDS = {
     "RED":    [(0, 20), (340, 360)],
-    "YELLOW": [(50, 90)],      # 노랑 범위 넓게
+    "YELLOW": [(50, 90)],
     "GREEN":  [(90, 160)],
     "BLUE":   [(190, 260)],
 }
@@ -130,8 +130,8 @@ def get_color(bgr_crop):
     main_deg = (np.rad2deg(np.arctan2(main_c[1], main_c[0])) + 360.0) % 360.0
 
     # 6) 노랑-빨강 경계 안정화 규칙
-    #    - 50~90°이면 기본 YELLOW 우선
-    #    - 정말 빨강이면 main_deg가 0~20 또는 340~360 근처로 분명하게 위치해야 함
+    # 50~90°이면 기본 YELLOW 우선
+    # 정말 빨강이면 main_deg가 0~20 또는 340~360 근처로 분명하게 위치해야 함
     if 50 <= main_deg <= 90:
         return "YELLOW"
     # 빨강 판정은 보수적으로
