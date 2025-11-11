@@ -14,7 +14,7 @@ ARDUINO_PORT = "/dev/cu.usbmodem141011"
 BAUD_RATE = 115200
 CAMERA_INDEX = 0
 
-DELAY_SECONDS = 5.0
+DELAY_SECONDS = 0.01
 
 def main_capture():
     cap = cv2.VideoCapture(CAMERA_INDEX)
@@ -34,13 +34,17 @@ def main_capture():
 
     print(f"[INFO] Arduino 'READY' 신호를 기다리는 중...")
 
+    last_sensor_state = "1"
+
     while True:
         line = ser.readline().decode('utf-8').strip()
         if line == "READY":
             print("[SUCCESS] Arduino 'READY' 신호 확인! 연결 성공.")
+            last_sensor_state = "1"
             break
         elif line:
             print(f"[SYNC] Arduino 부팅 신호 수신: {line}")
+            last_sensor_state = line
 
     print("==================================================")
     print(f"[INFO] 카메라가 연결되었습니다. (저장 폴더: {SAVE_FOLDER})")
@@ -48,7 +52,7 @@ def main_capture():
     print(f"[INFO] (종료하려면 터미널에서 Ctrl + C 를 누르세요)")
     print("==================================================")
 
-    last_sensor_state = "Unknown"
+    # last_sensor_state = "Unknown"
 
     pending_captures = []  # "촬영 예약 목록" (예: [10:05, 10:07, 10:09])
 
@@ -57,11 +61,6 @@ def main_capture():
             line = ser.readline().decode('utf-8').strip()
 
             if line:
-                if last_sensor_state == "Unknown":
-                    print(f"[INFO] 센서 초기 상태 수신: {line} ('1'=안 가려짐, '0'=가려짐)")
-                    last_sensor_state = line
-                    continue  # (사진 안 찍고 다음 루프로)
-
                 if line == "0" and last_sensor_state == "1":
                     capture_time = time.time() + DELAY_SECONDS  # 5초 뒤 시간
                     pending_captures.append(capture_time)
