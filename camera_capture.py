@@ -22,6 +22,26 @@ def main_capture():
         print(f"[ERROR] {CAMERA_INDEX}번 카메라를 열 수 없습니다.")
         return
 
+    # 1. 카메라 "자동 설정" 끄기
+    cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)  # 자동 초점 끄기
+    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)  # 셔터 속도/노출 수동 모드로 (0=수동, 1=자동모드끄기)
+
+    # 2. (추가) "셔터 속도" 빠르게 고정 (핵심!)
+    # (값이 작을수록 셔터가 빨라짐: -13 ~ 0)
+    # (예: -6 = 1/60초, -7 = 1/125초, -8 = 1/250초 ...)
+    # (카메라 기종마다 다름, -7 ~ -10 사이로 테스트 필요)
+    SHUTTER_SPEED = -8  # ⚠️ (1/250초 예시)
+    cap.set(cv2.CAP_PROP_EXPOSURE, SHUTTER_SPEED)
+
+    # 3. (추가) "ISO" (감도) 설정
+    # 셔터가 빨라지면 사진이 "어두워지므로" ISO를 높여서 보정
+    # (M2 맥북 내장 카메라는 이 설정이 안 먹힐 수 있음)
+    cap.set(cv2.CAP_PROP_ISO_SPEED, 800)  # (예: 800)
+
+    # (설정값 확인)
+    exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
+    print(f"[INFO] 카메라 셔터 속도(Exposure) 설정 시도... 실제 적용 값: {exposure}")
+
     try:
         ser = serial.Serial(ARDUINO_PORT, BAUD_RATE, timeout=1)
         print(f"[INFO] Arduino 포트({ARDUINO_PORT} @ {BAUD_RATE}bps) 연결 성공.")
@@ -58,6 +78,13 @@ def main_capture():
 
     try:
         while True:
+            # (카메라 설정을 유지하고, 버퍼를 비우기 위해)
+            ret, frame = cap.read()
+            if not ret:
+                print("[ERROR] 카메라에서 프레임을 읽을 수 없습니다. (루프 1)")
+                time.sleep(0.1)  # 잠시 대기 후 재시도
+                continue
+
             line = ser.readline().decode('utf-8').strip()
 
             if line:
@@ -78,13 +105,13 @@ def main_capture():
                 if now >= capture_time:
                     print(f"[CAPTURE] 예약된 캡처 실행!")
 
-                    ret, frame = cap.read()
-                    if not ret:
-                        print("[ERROR] 카메라에서 프레임을 읽을 수 없습니다.")
+                    ret_cap, frame_cap = cap.read()  # 캡처 순간에 한 번 더 읽기
+                    if not ret_cap:
+                        print("[ERROR] 카메라에서 프레임을 읽을 수 없습니다. (루프 2)")
                     else:
                         filename = f"capture_{int(time.time())}.jpg"
                         save_path = os.path.join(SAVE_FOLDER, filename)
-                        cv2.imwrite(save_path, frame)
+                        cv2.imwrite(save_path, frame_cap)
                         print(f"[SUCCESS] 캡처 성공! 이미지가 '{save_path}'에 저장되었습니다.")
                         print(f"[INFO] (run_project.py가 1초 안에 이 파일을 처리합니다...)")
 

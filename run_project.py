@@ -9,9 +9,10 @@ from utils.hsv_module import get_color
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
-TRAINED_MODEL_PATH = "/Users/skdod/runs/detect/train12/weights/best.pt"
+# 1. main.py가 만든 학습된 모델 경로 로드
+TRAINED_MODEL_PATH = "/Users/skdod/runs/detect/train14/weights/best.pt"
 
-# 모델 로드
+# 2. 모델 로드
 if not os.path.exists(TRAINED_MODEL_PATH):
     print(f"[ERROR] 모델 파일을 찾을 수 없습니다: {TRAINED_MODEL_PATH}")
     print("[INFO] 'main.py'를 실행하여 모델을 먼저 학습시키세요.")
@@ -23,7 +24,7 @@ CLASS_NAMES = model.names
 print(f"[INFO] Model loaded. Classes: {CLASS_NAMES}")
 
 # 사진 1장 들어왔을 때 처리하는 과정
-def process_image(image_path, conf_threshold=0.6):
+def process_image(image_path, conf_threshold=0.7):
 
     if not os.path.exists(image_path):
         print(f"[ERROR] 이미지 파일을 찾을 수 없습니다: {image_path}")
@@ -44,19 +45,16 @@ def process_image(image_path, conf_threshold=0.6):
 
     final_data = {
         "text": None,
+        "text_conf": 0.0, # (OCR 신뢰도)
         "color": None,
-        "object_type": None
+        "object_type": None,
+        "low_confidence_skips": []
     }
 
     for box in result.boxes:
         conf = box.conf[0].item()
         cls_index = int(box.cls[0].item())
         class_name = CLASS_NAMES[cls_index]
-
-        # 설정한 정확도(conf_threshold) 미만이면 [SKIP]-무시
-        if conf < conf_threshold:
-            print(f"[SKIP] Found '{class_name}' but confidence is too low ({conf * 100:.0f}%)")
-            continue
 
         nx1, ny1, nx2, ny2 = box.xyxyn[0].tolist()
         x1 = int(nx1 * orig_w)
@@ -68,6 +66,14 @@ def process_image(image_path, conf_threshold=0.6):
 
         # marker_text 처리 로직
         if class_name == 'marker_text':
+
+            if conf < conf_threshold:
+                skip_info = f"{class_name} ({conf * 100:.0f}%)"
+                print(f"[SKIP] Found 'marker_text' but confidence is too low ({conf * 100:.0f}%)")
+                final_data["low_confidence_skips"].append(skip_info)
+                continue
+
+
             print(f"[YOLO] Found 'marker_text' (Conf: {conf * 100:.0f}%). Sending to OCR...")
 
             temp_crop_path = os.path.join(PROJECT_ROOT, "temp_ocr_image.jpg")
@@ -75,11 +81,12 @@ def process_image(image_path, conf_threshold=0.6):
             print(f"[DEBUG] OCR용 *컬러 원본* 크롭 이미지 저장: {temp_crop_path}")
 
             # 파일 경로 전달
-            extracted_texts = run_ocr(temp_crop_path)
+            extracted_text, ocr_confidence = run_ocr(temp_crop_path, multi_angle=False)
 
-            if extracted_texts:
-                final_data["text"] = extracted_texts[0]
-                print(f"[SUCCESS] OCR Result: {final_data['text']}")
+            if extracted_text:
+                final_data["text"] = extracted_text
+                final_data["text_conf"] = ocr_confidence  #️OCR 신뢰도 저장
+                print(f"[SUCCESS] OCR Result: {final_data['text']} (Conf: {ocr_confidence:.2f})")
             else:
                 print("[INFO] OCR module ran, but found no text.")
 
@@ -89,6 +96,13 @@ def process_image(image_path, conf_threshold=0.6):
                 print(f"[WARN] Failed to remove temp crop file: {e}")
 
         elif class_name == 'marker_color':
+
+            if conf < conf_threshold:
+                skip_info = f"{class_name} ({conf * 100:.0f}%)"
+                print(f"[SKIP] Found 'marker_color' but confidence is too low ({conf * 100:.0f}%)")
+                final_data["low_confidence_skips"].append(skip_info)
+                continue
+
             print(f"[YOLO] Found 'marker_color' (Conf: {conf * 100:.0f}%). Sending to HSV...")
             detected_color = get_color(cropped_img)
             final_data["color"] = detected_color
@@ -119,6 +133,9 @@ if __name__ == "__main__":
     KNOWN_TEXTS = ['대형', '중형', '소형']
     KNOWN_COLORS = ['RED', 'GREEN', 'BLUE', 'YELLOW']
 
+    YOLO_CONF_THRESHOLD = 0.70  # "탐지" 컷오프 (YOLO)
+    OCR_CONF_THRESHOLD = 0.70  # "인식" 컷오프 (PaddleOCR)
+
     processed_files = set()
 
     print(f"==================================================")
@@ -142,8 +159,8 @@ if __name__ == "__main__":
                 print(f"\n[INFO] {len(new_files)}개의 새 이미지를 감지했습니다. 처리를 시작합니다...")
                 for image_path in new_files:
 
-                    # 컷오프를 70% (0.7)로 다시 복구
-                    annotated_image, extracted_data = process_image(image_path, conf_threshold=0.7)
+                    # 컷오프 70% (0.7)를 process_image 함수로 "전달"
+                    annotated_image, extracted_data = process_image(image_path, conf_threshold=YOLO_CONF_THRESHOLD)
 
                     if annotated_image is not None:
                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
@@ -153,28 +170,19 @@ if __name__ == "__main__":
                         base_name = os.path.basename(image_path)
                         save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
 
-                        # (일단 '예외'로 가정하고 시작)
                         save_path = os.path.join(ERROR_OUTPUT_FOLDER, save_name)
                         is_success = False
 
                         detected_text = extracted_data.get("text")
+                        detected_text_conf = extracted_data.get("text_conf", 0.0)
                         detected_color = extracted_data.get("color")
 
-                        # (조건 1) "알려진 텍스트"인가?
-                        if detected_text and detected_text in KNOWN_TEXTS:
+                        if (detected_text in KNOWN_TEXTS) and (detected_text_conf >= OCR_CONF_THRESHOLD):
                             save_path = os.path.join(OCR_OUTPUT_FOLDER, save_name)
                             is_success = True
-
-                        # (조건 2) "알려진 텍스트"는 아니지만, "알려진 색상"인가?
-                        elif (not detected_text) and (detected_color and detected_color in KNOWN_COLORS):
+                        elif (not detected_text) and (detected_color in KNOWN_COLORS):
                             save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
                             is_success = True
-
-                        # (그 외 모든 경우)
-                        # - conf < 0.7
-                        # - color == 'Unknown'
-                        # - text == '해'
-                        # ... 는 모두 'is_success = False'가 되어 'ERROR_OUTPUT_FOLDER'에 저장됨
 
                         # 파일 저장 및 로그
                         try:

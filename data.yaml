@@ -8,6 +8,6 @@ names: ['marker_color', 'marker_text', 'objects']
 roboflow:
   workspace: capstone-p6n40
   project: detect-ccc8b
-  version: 6
+  version: 7
   license: CC BY 4.0
-  url: https://universe.roboflow.com/capstone-p6n40/detect-ccc8b/dataset/6
+  url: https://universe.roboflow.com/capstone-p6n40/detect-ccc8b/dataset/7
