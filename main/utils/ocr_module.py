@@ -104,16 +104,3 @@ def run_ocr(image_path, multi_angle=False):
                 best_text = current_best_text
 
     return best_text, best_conf  # (텍스트, 신뢰도) 2개 반환
-
-
-# --- 테스트용 코드 ---
-# if __name__ == "__main__":
-#     test_image_path = os.path.join(os.path.dirname(__file__), "../test_originals/테스트할이미지파일명")
-#
-#     if os.path.exists(test_image_path):
-#         print(f"--- Running OCR test on {test_image_path} ---")
-#         texts = run_ocr(test_image_path)
-#         print(f"--- OCR Test Done ---")
-#         print(f"All Extracted Text: {texts}")
-#     else:
-#         print(f"[ERROR] Test image not found: {test_image_path}")

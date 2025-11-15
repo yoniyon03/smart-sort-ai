@@ -21,7 +21,7 @@ def main():
     # 1) 사전학습 가중치 불러오기 (COCO로 학습된 초경량 모델)
     model = YOLO("yolov8n.pt")
 
-    # 2) 전이학습(Transfer Learning)
+    # 2) 전이학습
     results = model.train(
         data=data_yaml,
         imgsz=960,          # 640 --> 960 수정 (이미지 크기 너무 작으면 인식 잘 안 됨)
@@ -33,11 +33,11 @@ def main():
     )
     print("[INFO] Train done. Best metrics:", results.results_dict)
 
-    # 3) 검증 (val 세트로 mAP/PR/Recall 등 확인)
+    # 3) 검증
     val_metrics = model.val(data=data_yaml, device=device)
     print("[INFO] Val mAP50-95:", val_metrics.box.map)
 
-    # 4) 예측 테스트 (아래 경로에 있는 이미지/폴더로 바꾸기)
+    # 4) 예측 테스트
     test_source = "./dataset/images/val"   # 샘플로 val 폴더에 대해 예측
     preds = model.predict(
         source=test_source,

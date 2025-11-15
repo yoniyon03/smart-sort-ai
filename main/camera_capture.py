@@ -6,12 +6,15 @@ import serial
 
 # --- 1. 경로 설정 ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-SAVE_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
+SAVE_FOLDER = os.path.join(PROJECT_ROOT, "input_images")
 os.makedirs(SAVE_FOLDER, exist_ok=True)
 
 # --- 2. Arduino 포트 및 카메라 설정 ---
+# ARDUINO_PORT 윈도우는 COM 포트로 수정
 ARDUINO_PORT = "/dev/cu.usbmodem141011"
 BAUD_RATE = 115200
+
+# CAMERA_INDEX pc 마다 다를 수 있으니 0, 1 바꿔보기
 CAMERA_INDEX = 0
 
 DELAY_SECONDS = 0.01
@@ -22,23 +25,22 @@ def main_capture():
         print(f"[ERROR] {CAMERA_INDEX}번 카메라를 열 수 없습니다.")
         return
 
-    # 1. 카메라 "자동 설정" 끄기
+    # 1. 카메라 자동 설정 끄기
     cap.set(cv2.CAP_PROP_AUTOFOCUS, 1)  # 자동 초점 끄기
     cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 1)  # 셔터 속도/노출 수동 모드로 (0=수동, 1=자동모드끄기)
 
-    # 2. (추가) "셔터 속도" 빠르게 고정 (핵심!)
+    # 2. 셔터 속도 빠르게 고정
     # (값이 작을수록 셔터가 빨라짐: -13 ~ 0)
     # (예: -6 = 1/60초, -7 = 1/125초, -8 = 1/250초 ...)
     # (카메라 기종마다 다름, -7 ~ -10 사이로 테스트 필요)
-    SHUTTER_SPEED = -8  # ⚠️ (1/250초 예시)
+    SHUTTER_SPEED = -8  # 1/250초 예시
     cap.set(cv2.CAP_PROP_EXPOSURE, SHUTTER_SPEED)
 
-    # 3. (추가) "ISO" (감도) 설정
+    # 3. ISO(감도) 설정
     # 셔터가 빨라지면 사진이 "어두워지므로" ISO를 높여서 보정
     # (M2 맥북 내장 카메라는 이 설정이 안 먹힐 수 있음)
-    cap.set(cv2.CAP_PROP_ISO_SPEED, 800)  # (예: 800)
+    cap.set(cv2.CAP_PROP_ISO_SPEED, 800)
 
-    # (설정값 확인)
     exposure = cap.get(cv2.CAP_PROP_EXPOSURE)
     print(f"[INFO] 카메라 셔터 속도(Exposure) 설정 시도... 실제 적용 값: {exposure}")
 
@@ -78,7 +80,7 @@ def main_capture():
 
     try:
         while True:
-            # (카메라 설정을 유지하고, 버퍼를 비우기 위해)
+            # 카메라 설정을 유지하고 버퍼를 비우기 위함
             ret, frame = cap.read()
             if not ret:
                 print("[ERROR] 카메라에서 프레임을 읽을 수 없습니다. (루프 1)")
@@ -89,7 +91,7 @@ def main_capture():
 
             if line:
                 if line == "0" and last_sensor_state == "1":
-                    capture_time = time.time() + DELAY_SECONDS  # 5초 뒤 시간
+                    capture_time = time.time() + DELAY_SECONDS
                     pending_captures.append(capture_time)
                     print(f"\n[SIGNAL] '0' 신호 수신! {len(pending_captures)}번째 촬영 예약 (5초 후)")
 
@@ -98,14 +100,14 @@ def main_capture():
             now = time.time()
             triggered_captures = []
 
-            # (예약 목록을 순회)
+            # 예약 목록을 순회
             for capture_time in pending_captures:
 
-                # (현재 시간이 예약된 시간을 지났다면)
+                # 현재 시간이 예약된 시간을 지났다면
                 if now >= capture_time:
                     print(f"[CAPTURE] 예약된 캡처 실행!")
 
-                    ret_cap, frame_cap = cap.read()  # 캡처 순간에 한 번 더 읽기
+                    ret_cap, frame_cap = cap.read()
                     if not ret_cap:
                         print("[ERROR] 카메라에서 프레임을 읽을 수 없습니다. (루프 2)")
                     else:
@@ -117,7 +119,7 @@ def main_capture():
 
                     triggered_captures.append(capture_time)
 
-            # (촬영 완료된 항목들을 "예약 목록"에서 제거)
+            # 촬영 완료된 항목들 "예약 목록"에서 제거
             if triggered_captures:
                 pending_captures = [t for t in pending_captures if t not in triggered_captures]
 
@@ -133,14 +135,14 @@ if __name__ == "__main__":
     main_capture()
 
 
-# enter 키 누를 때마다 사진 1장씩 찍히는 코드
+# # enter 키 누를 때마다 사진 1장씩 찍히는 코드
 # import cv2
 # import os
 # import time
 #
 # # --- 1. 경로 설정 ---
 # PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-# SAVE_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
+# SAVE_FOLDER = os.path.join(PROJECT_ROOT, "input_images")
 # os.makedirs(SAVE_FOLDER, exist_ok=True)
 #
 #

@@ -7,10 +7,18 @@ import time
 from utils.ocr_module import run_ocr
 from utils.hsv_module import get_color
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))        # main 폴더
+TRAINING_ROOT = os.path.join(PROJECT_ROOT, "..", "training")     # training 폴더
 
 # 1. main.py가 만든 학습된 모델 경로 로드
-TRAINED_MODEL_PATH = "/Users/skdod/runs/detect/train14/weights/best.pt"
+TRAINED_MODEL_PATH = os.path.join(
+    TRAINING_ROOT,
+    "runs",
+    "detect",
+    "train14",
+    "weights",
+    "best.pt"
+)
 
 # 2. 모델 로드
 if not os.path.exists(TRAINED_MODEL_PATH):
@@ -45,7 +53,7 @@ def process_image(image_path, conf_threshold=0.7):
 
     final_data = {
         "text": None,
-        "text_conf": 0.0, # (OCR 신뢰도)
+        "text_conf": 0.0, # OCR 신뢰도
         "color": None,
         "object_type": None,
         "low_confidence_skips": []
@@ -85,7 +93,7 @@ def process_image(image_path, conf_threshold=0.7):
 
             if extracted_text:
                 final_data["text"] = extracted_text
-                final_data["text_conf"] = ocr_confidence  #️OCR 신뢰도 저장
+                final_data["text_conf"] = ocr_confidence
                 print(f"[SUCCESS] OCR Result: {final_data['text']} (Conf: {ocr_confidence:.2f})")
             else:
                 print("[INFO] OCR module ran, but found no text.")
@@ -118,12 +126,12 @@ def process_image(image_path, conf_threshold=0.7):
 # 메인 실행
 if __name__ == "__main__":
 
-    WATCH_FOLDER = os.path.join(PROJECT_ROOT, "test_originals")
+    WATCH_FOLDER = os.path.join(PROJECT_ROOT, "input_images")
 
     # 결과 저장용 폴더 3개
-    OCR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_ocr")
-    COLOR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_color")
-    ERROR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "test_originals_error")
+    OCR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "results_text")
+    COLOR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "results_color")
+    ERROR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "results_error")
 
     # 폴더 3개 모두 생성
     os.makedirs(OCR_OUTPUT_FOLDER, exist_ok=True)
@@ -159,14 +167,14 @@ if __name__ == "__main__":
                 print(f"\n[INFO] {len(new_files)}개의 새 이미지를 감지했습니다. 처리를 시작합니다...")
                 for image_path in new_files:
 
-                    # 컷오프 70% (0.7)를 process_image 함수로 "전달"
+                    # 컷오프 70% (0.7)를 process_image 함수로 전달
                     annotated_image, extracted_data = process_image(image_path, conf_threshold=YOLO_CONF_THRESHOLD)
 
                     if annotated_image is not None:
                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
                         print(extracted_data)
 
-                        # "예외 분류" 저장 로직
+                        # 예외 분류 저장 로직
                         base_name = os.path.basename(image_path)
                         save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
 
