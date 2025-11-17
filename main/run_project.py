@@ -7,6 +7,14 @@ import time
 from utils.ocr_module import run_ocr
 from utils.hsv_module import get_color
 
+from device_api import (
+    MANAGER_ID,
+    fetch_setup,
+    build_rule_maps,
+    send_sorting_result,
+    send_error_event,
+)
+
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))        # main 폴더
 TRAINING_ROOT = os.path.join(PROJECT_ROOT, "..", "training")     # training 폴더
 
@@ -15,7 +23,7 @@ TRAINED_MODEL_PATH = os.path.join(
     TRAINING_ROOT,
     "runs",
     "detect",
-    "train14",
+    "train12",
     "weights",
     "best.pt"
 )
@@ -72,6 +80,17 @@ def process_image(image_path, conf_threshold=0.7):
         x2 = int(nx2 * orig_w)
         y2 = int(ny2 * orig_h)
 
+        # 라벨 주면 여유 10% 정도 확장
+        if class_name == 'marker_text':
+            bw = x2 - x1
+            bh = y2 - y1
+            pad = int(0.2 * max(bw, bh)) # 인식 잘 안 되면 0.2 보다 증가 시켜서 테스트
+
+            x1 = max(0, x1 - pad)
+            y1 = max(0, y1 - pad)
+            x2 = min(orig_w, x2 + pad)
+            y2 = min(orig_h, y2 + pad)
+
         cropped_img = original_image[y1:y2, x1:x2]
 
         # text 처리 로직
@@ -92,7 +111,7 @@ def process_image(image_path, conf_threshold=0.7):
             print(f"[DEBUG] OCR용 *컬러 원본* 크롭 이미지 저장: {temp_crop_path}")
 
             # 파일 경로 전달
-            extracted_text, ocr_confidence = run_ocr(temp_crop_path, multi_angle=False)
+            extracted_text, ocr_confidence = run_ocr(temp_crop_path, multi_angle=True)
 
             if extracted_text:
                 final_data["text"] = extracted_text
@@ -130,6 +149,10 @@ def process_image(image_path, conf_threshold=0.7):
 
 # 메인 실행
 if __name__ == "__main__":
+
+    # 서버에서 현재 장비에 적용할 분류 규칙/슈트 설정 받아오기
+    setup_json = fetch_setup(MANAGER_ID)
+    TEXT_RULES, COLOR_RULES = build_rule_maps(setup_json)
 
     WATCH_FOLDER = os.path.join(PROJECT_ROOT, "input_images")
     ERROR_ROOT = os.path.join(PROJECT_ROOT, "results_error")
@@ -185,12 +208,16 @@ if __name__ == "__main__":
                         print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
                         print(extracted_data)
 
+                        rule_id = None
+                        chute_id = None
+
                         # 예외 분류 저장 로직
                         base_name = os.path.basename(image_path)
                         save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
 
                         save_path = None
                         is_success = False
+                        error_code = None # 에러 상황이면 이 문자열 설정
 
                         detected_text = extracted_data.get("text")
                         detected_text_conf = extracted_data.get("text_conf", 0.0)
@@ -203,11 +230,32 @@ if __name__ == "__main__":
                             is_success = True
                             print("[ROUTE] 정상 텍스트 결과 폴더로 저장")
 
+                            # 텍스트 라벨 -> ruleId / chuteId 매핑
+                            rule_info = TEXT_RULES.get(detected_text)
+                            if rule_info:
+                                rule_id = rule_info["ruleId"]
+                                chute_id = rule_info["chuteId"]
+                            else:
+                                # 서버에 규칙이 없으면, 분류 실패로 처리
+                                is_success = False
+                                error_code = "RULE_NOT_FOUND"
+                                print("[WARN] TEXT_RULES에 해당 텍스트 규칙이 없습니다. RULE_NOT_FOUND")
+
                         # 2. 정상 색상 인식
                         elif (not detected_text) and (detected_color in KNOWN_COLORS):
                             save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
                             is_success = True
                             print("[ROUTE] 정상 색상 결과 폴더로 저장")
+
+                            # color rule 매핑
+                            rule_info = COLOR_RULES.get(detected_color)
+                            if rule_info:
+                                rule_id = rule_info["ruleId"]
+                                chute_id = rule_info["chuteId"]
+                            else:
+                                is_success = False
+                                error_code = "RULE_NOT_FOUND"
+                                print("[WARN] COLOR_RULES에 해당 색상 규칙이 없습니다. RULE_NOT_FOUND")
 
                         # 3. 텍스트 오류 케이스 (텍스트는 인식했으나 신뢰도가 낮음, 혹은 low_confidence_skips 안에 marker_text 관련 내용이 있음)
                         elif (
@@ -237,8 +285,32 @@ if __name__ == "__main__":
 
                             if is_success:
                                 print(f"[SUCCESS] 결과 이미지를 '{save_path}'에 저장했습니다.")
+                                # 분류 성공 -> sorting-result 이벤트 전송
+                                if rule_id is not None and chute_id is not None:
+                                    send_sorting_result(
+                                        manager_id=MANAGER_ID,
+                                        rule_id=rule_id,
+                                        chute_id=chute_id,
+                                        image_path=save_path,
+                                    )
+                                else :
+                                    # ruleId/chuteId 매핑 없으면 강제로 에러 보고
+                                    send_error_event(
+                                        manager_id=MANAGER_ID,
+                                        error_code=error_code or "RULE_NOT_FOUND",
+                                        image_path=save_path,
+                                    )
                             else:
                                 print(f"[INFO] 예외 항목(알 수 없는 텍스트/색상 또는 70% 미만) 이미지를 '{save_path}'에 저장했습니다.")
+                                # 분류 실패/에러 -> error 이벤트 전송
+                                if error_code:
+                                    send_error_event(
+                                        manager_id=MANAGER_ID,
+                                        error_code=error_code,
+                                        rule_id=rule_id,
+                                        chute_id=chute_id,
+                                        image_path=save_path
+                                    )
 
                         except Exception as e:
                             print(f"[ERROR] 결과 이미지 저장 실패: {e}")
