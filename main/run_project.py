@@ -56,7 +56,9 @@ def process_image(image_path, conf_threshold=0.7):
         "text_conf": 0.0, # OCR 신뢰도
         "color": None,
         "object_type": None,
-        "low_confidence_skips": []
+        "low_confidence_skips": [],
+        "had_text": False, # results_text를 본 적 있는지
+        "had_color": False, # results_color를 본 적 있는지
     }
 
     for box in result.boxes:
@@ -72,8 +74,9 @@ def process_image(image_path, conf_threshold=0.7):
 
         cropped_img = original_image[y1:y2, x1:x2]
 
-        # marker_text 처리 로직
+        # text 처리 로직
         if class_name == 'marker_text':
+            final_data["had_text"] = True
 
             if conf < conf_threshold:
                 skip_info = f"{class_name} ({conf * 100:.0f}%)"
@@ -103,7 +106,9 @@ def process_image(image_path, conf_threshold=0.7):
             except Exception as e:
                 print(f"[WARN] Failed to remove temp crop file: {e}")
 
+        # color 처리 로직
         elif class_name == 'marker_color':
+            final_data["had_color"] = True
 
             if conf < conf_threshold:
                 skip_info = f"{class_name} ({conf * 100:.0f}%)"
@@ -127,16 +132,22 @@ def process_image(image_path, conf_threshold=0.7):
 if __name__ == "__main__":
 
     WATCH_FOLDER = os.path.join(PROJECT_ROOT, "input_images")
+    ERROR_ROOT = os.path.join(PROJECT_ROOT, "results_error")
 
-    # 결과 저장용 폴더 3개
+    # 정상 폴더
     OCR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "results_text")
     COLOR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "results_color")
-    ERROR_OUTPUT_FOLDER = os.path.join(PROJECT_ROOT, "results_error")
 
-    # 폴더 3개 모두 생성
+    # 에러 상세 폴더
+    ERROR_TEXT_OUTPUT_FOLDER = os.path.join(ERROR_ROOT, "text")
+    ERROR_COLOR_OUTPUT_FOLDER = os.path.join(ERROR_ROOT, "color")
+
+    # 폴더 생성
     os.makedirs(OCR_OUTPUT_FOLDER, exist_ok=True)
     os.makedirs(COLOR_OUTPUT_FOLDER, exist_ok=True)
-    os.makedirs(ERROR_OUTPUT_FOLDER, exist_ok=True)
+    os.makedirs(ERROR_ROOT, exist_ok=True)
+    os.makedirs(ERROR_TEXT_OUTPUT_FOLDER, exist_ok=True)
+    os.makedirs(ERROR_COLOR_OUTPUT_FOLDER, exist_ok=True)
 
     KNOWN_TEXTS = ['대형', '중형', '소형']
     KNOWN_COLORS = ['RED', 'GREEN', 'BLUE', 'YELLOW']
@@ -178,19 +189,47 @@ if __name__ == "__main__":
                         base_name = os.path.basename(image_path)
                         save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
 
-                        save_path = os.path.join(ERROR_OUTPUT_FOLDER, save_name)
+                        save_path = None
                         is_success = False
 
                         detected_text = extracted_data.get("text")
                         detected_text_conf = extracted_data.get("text_conf", 0.0)
                         detected_color = extracted_data.get("color")
+                        low_conf_list = extracted_data.get("low_confidence_skips", [])
 
+                        # 1. 정상 텍스트 인식
                         if (detected_text in KNOWN_TEXTS) and (detected_text_conf >= OCR_CONF_THRESHOLD):
                             save_path = os.path.join(OCR_OUTPUT_FOLDER, save_name)
                             is_success = True
+                            print("[ROUTE] 정상 텍스트 결과 폴더로 저장")
+
+                        # 2. 정상 색상 인식
                         elif (not detected_text) and (detected_color in KNOWN_COLORS):
                             save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
                             is_success = True
+                            print("[ROUTE] 정상 색상 결과 폴더로 저장")
+
+                        # 3. 텍스트 오류 케이스 (텍스트는 인식했으나 신뢰도가 낮음, 혹은 low_confidence_skips 안에 marker_text 관련 내용이 있음)
+                        elif (
+                                (detected_text and detected_text_conf < OCR_CONF_THRESHOLD) or
+                                any("marker_text" in s for s in low_conf_list)
+                        ):
+                            save_path = os.path.join(ERROR_TEXT_OUTPUT_FOLDER, save_name)
+                            print("[ROUTE] 텍스트 오류 폴더(results_error/text)로 저장")
+
+                        # 4. 색상 오류 케이스 (색상은 나왔으나 우리가 아는 색상이 아님, 혹은 low_confidence_skips 안에 color 관련 내용이 있음)
+                        elif (
+                                (detected_color and detected_color not in KNOWN_COLORS) or
+                                any("marker_color" in s for s in low_conf_list)
+                        ):
+                            save_path = os.path.join(ERROR_COLOR_OUTPUT_FOLDER, save_name)
+                            print("[ROUTE] 색상 오류 폴더(results_error/color)로 저장")
+
+                        # 5. 그 외 애매한 모든 케이스 --> 최상위 에러 폴더
+                        else:
+                            save_path = os.path.join(ERROR_ROOT, save_name)
+                            print("[ROUTE] 기타 에러 폴더(results_error)로 저장")
+
 
                         # 파일 저장 및 로그
                         try:
