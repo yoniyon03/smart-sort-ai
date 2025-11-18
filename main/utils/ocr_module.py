@@ -60,7 +60,9 @@ def _preprocess_for_cor(image_bgr, strong=False):
     # 1. 그레이 + 크기 통일 (작은 크롭이면 키워주기)
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
-    target_h = 320
+
+    # 🔽 target_h를 320 -> 260 정도로만 (조금 덜 키워서 연산량 살짝 줄이기)
+    target_h = 260
     if h < target_h:
         scale = target_h / float(h)
         gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
@@ -98,17 +100,20 @@ def _try_ocr_with_angles(image_bgr, angles, strong=False):
     best_text = None
     best_conf = 0.0
 
+    # 🔽 “이 이상이면 더 돌려도 의미 없다” 기준
+    EARLY_BREAK_CONF = 0.98
+
     for angle in angles:
         rotated = image_bgr
         if angle != 0:
-            M = cv2.getRotationMatrix2D(center, angle, 1.0 )
+            M = cv2.getRotationMatrix2D(center, angle, 1.0)
             rotated = cv2.warpAffine(
                 image_bgr, M, (w, h),
                 flags=cv2.INTER_CUBIC,
                 borderMode=cv2.BORDER_REPLICATE
             )
 
-        # 여기서 전처리 적용
+        # 전처리 적용
         processed = _preprocess_for_cor(rotated, strong=strong)
         results = _run_ocr_on_image(processed)
 
@@ -129,13 +134,19 @@ def _try_ocr_with_angles(image_bgr, angles, strong=False):
             best_conf = current_best_conf
             best_text = current_best_text
 
+        # 이미 충분히 높은 신뢰도면 남은 각도는 안 돌리고 탈출
+        if best_conf >= EARLY_BREAK_CONF:
+            print(f"[DEBUG-OCR] 신뢰도 {best_conf:.2f} ≥ {EARLY_BREAK_CONF:.2f}, "
+                  f"나머지 각도는 스킵합니다.")
+            break
+
     return best_text, best_conf
 
 def run_ocr(image_path, multi_angle=False):
     """
     메인 호출용
     이미지 경로를 받아 OCR을 수행하고 (최고 텍스트, 최고 신뢰도)를 반환
-   multi_angle=False : 빠른 시도 1번 (0도 / 약한 전처리)
+    multi_angle=False : 빠른 시도 1번 (0도 / 약한 전처리)
     multi_angle=True  : 1단계(빠른 시도) 후, 신뢰도 낮으면
                         2단계(강한 전처리 + 다각도 TTA)까지 돌림
     """
@@ -160,17 +171,26 @@ def run_ocr(image_path, multi_angle=False):
     if not multi_angle:
         return best_text, best_conf
 
-    # 2단계: 신뢰도가 낮을 때만 강한 모드 + 다각도
-    CONF_THRESHOLD_FOR_SECOND_STAGE = 0.6
-    if best_conf < CONF_THRESHOLD_FOR_SECOND_STAGE:
-        print("[DEBUG-OCR] 신뢰도 낮음 -> 2단계 strong multi-angle 시도")
-        text2, conf2 = _try_ocr_with_angles(
-            image_bgr=image,
-            angles=range(-20, 21, 10),
-            strong=True
-        )
+    # 1단계에서 이미 충분히 잘 나온 경우 2단계 스킵
+    FAST_GOOD_THRESHOLD = 0.70  # 0.8 이상이면 그냥 이 결과 믿고 끝내기
+    if best_conf >= FAST_GOOD_THRESHOLD:
+        print(f"[DEBUG-OCR] 1단계 신뢰도 {best_conf:.2f} ≥ {FAST_GOOD_THRESHOLD:.2f}, "
+              f"2단계 strong multi-angle 생략.")
+        return best_text, best_conf
 
-        if conf2 > best_conf:
-            best_text, best_conf = text2, conf2
+    # 2단계: 신뢰도가 낮을 때만 강한 모드 + 다각도
+    print("[DEBUG-OCR] 신뢰도 낮음 -> 2단계 strong multi-angle 시도")
+
+    # 각도 범위 줄이기: [-20, -10, 0, 10, 20] → [-15, 0, 15]
+    angles_second_stage = [-15, 0, 15]
+
+    text2, conf2 = _try_ocr_with_angles(
+        image_bgr=image,
+        angles=angles_second_stage,
+        strong=True
+    )
+
+    if conf2 > best_conf:
+        best_text, best_conf = text2, conf2
 
     return best_text, best_conf
