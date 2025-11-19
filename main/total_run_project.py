@@ -377,33 +377,57 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
                     )
                 else:
                     try:
-                        # ───── 킥 모션 설정값 ─────
-                        KICK_DELTA = 30  # main_deg에서 이만큼 뒤로 당겼다가
-                        PRE_KICK_WAIT = 1.5  # main_deg 위치에서 기다릴 시간 (예: 1초)
-                        KICK_WAIT = 0.25  # 킥 사이사이 대기 시간
-
                         main_deg = servo_deg
-                        back_deg = max(0, min(180, main_deg - KICK_DELTA))
 
-                        print(f"[SERVO] KICK START 준비 → main={main_deg}°, back={back_deg}°")
+                        # ==========================
+                        # ① 90도 이하: 5초 후 0도로 복귀
+                        # ==========================
+                        if servo_deg <= 90:
+                            PRE_KICK_WAIT = 5
 
-                        # 1) 먼저 분류 각도로 이동 (예: 30도, 90도, 150도 등)
-                        print(f"[SERVO] → {main_deg}° (분류 위치 이동)")
-                        ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
-                        # ★ 이 상태에서 물건이 도착하길 1초 정도 기다림
-                        time.sleep(PRE_KICK_WAIT)
+                            print(f"[SERVO] SIMPLE MOVE → main={main_deg}°, then HOME after {PRE_KICK_WAIT}s")
 
-                        # 2) 살짝 뒤로 당기기 (킥 준비)
-                        print(f"[SERVO] → {back_deg}° (kick back)")
-                        ser.write(f"SERVO {back_deg}\n".encode("utf-8"))
-                        time.sleep(KICK_WAIT)
+                            # 분류 각도로 이동
+                            print(f"[SERVO] → {main_deg}° (분류 위치 이동)")
+                            ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
+                            time.sleep(PRE_KICK_WAIT)
 
-                        # 3) 다시 앞으로 밀기 (실제 킥!)
-                        print(f"[SERVO] → {main_deg}° (kick forward)")
-                        ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
-                        time.sleep(KICK_WAIT)
+                            # 0도로 복귀
+                            print("[SERVO] → 0° (back to HOME)")
+                            ser.write(b"SERVO 0\n")
+                            time.sleep(0.3)
 
-                        # 여기선 HOME 안 보냄 (초기화는 앞 센서 들어올 때 run loop에서 따로)
+                        # ==========================
+                        # ② 90도 초과: 킥 모션 유지
+                        # ==========================
+                        else:
+                            PRE_KICK_WAIT = 10  # 항상 8초
+                            KICK_DELTA = 30  # 항상 30도
+                            KICK_WAIT = 0.25
+
+                            back_deg = max(0, min(180, main_deg - KICK_DELTA))
+
+                            print(
+                                f"[SERVO] KICK START → main={main_deg}°, "
+                                f"back={back_deg}°, PRE_WAIT={PRE_KICK_WAIT}s"
+                            )
+
+                            # 1) 분류 위치 이동
+                            print(f"[SERVO] → {main_deg}° (분류 위치 이동)")
+                            ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
+                            time.sleep(PRE_KICK_WAIT)
+
+                            # 2) 살짝 뒤로 당기기 (킥 준비)
+                            print(f"[SERVO] → {back_deg}° (kick back)")
+                            ser.write(f"SERVO {back_deg}\n".encode("utf-8"))
+                            time.sleep(KICK_WAIT)
+
+                            # 3) 다시 앞으로 밀기 (실제 킥)
+                            print(f"[SERVO] → {main_deg}° (kick forward)")
+                            ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
+                            time.sleep(KICK_WAIT)
+
+                        # 공통: 아두이노 응답 한 번 읽기
                         reply = ser.readline().decode("utf-8", errors="ignore").strip()
                         if reply:
                             print(f"[SERVO] from Arduino: {reply}")
@@ -572,11 +596,11 @@ if __name__ == "__main__":
             line = ser.readline().decode("utf-8", errors="ignore").strip() if ser else ""
             now = time.time()
 
-            # ★ 뒤 센서 타임아웃 처리 (원하면 사용)
-            if waiting_for_rear and now > rear_deadline:
-                print("[CHECK] 뒤 센서 타임아웃 → 검수 종료")
-                waiting_for_rear = False
-                current_item = None
+            # # ★ 뒤 센서 타임아웃 처리 (원하면 사용)
+            # if waiting_for_rear and now > rear_deadline:
+            #     print("[CHECK] 뒤 센서 타임아웃 → 검수 종료")
+            #     waiting_for_rear = False
+            #     current_item = None
 
             # 디버그용: 들어오는 모든 문자열 찍어보기
             if line:
@@ -628,43 +652,70 @@ if __name__ == "__main__":
                         "image_path": saved_path,
                     }
                     waiting_for_rear = True
-                    rear_deadline = time.time() + REAR_TIMEOUT_SEC
+                    # rear_deadline = time.time() + REAR_TIMEOUT_SEC
 
             # ───────────── 뒤 포토센서 (검수용) ─────────────
-            elif line == "CHECK_0":  # 아두이노에서 검수 센서용으로 보내는 문자열
+            # elif line == "CHECK_0":  # 아두이노에서 검수 센서용으로 보내는 문자열
+            #     print("[SENSOR] 뒤 검수 센서 감지")
+            #
+            #     if waiting_for_rear and current_item is not None:
+            #         # 1) 앞 센서 + 분류 + 서보까지 정상 동작했는데도
+            #         #    뒤 검사 센서에 걸렸다 → 서보가 물건을 못 날린 것
+            #         if current_item["sorted_ok"]:
+            #             print("[ERROR] SERVO_ERROR: 분류/서보는 정상인데 뒤 센서에서 물체 감지")
+            #             send_error_event(
+            #                 manager_id=MANAGER_ID,
+            #                 error_code="SERVO_ERROR",
+            #                 rule_id=None,
+            #                 chute_id=None,
+            #                 image_path=current_item["image_path"],
+            #             )
+            #         # 2) 앞 센서는 감지했지만 분류/서보가 정상적으로 안 됐는데
+            #         #    뒤 센서에서 물체가 나왔다 → 카메라/인식 계열 문제로 간주
+            #         else:
+            #             print("[ERROR] CAMERA_ERROR: 앞 센서 감지 + 사진/인식 쪽 문제 추정")
+            #             send_error_event(
+            #                 manager_id=MANAGER_ID,
+            #                 error_code="CAMERA_ERROR",
+            #                 rule_id=None,
+            #                 chute_id=None,
+            #                 image_path=current_item["image_path"],
+            #             )
+            #
+            #         # 이 물건에 대한 검수 끝
+            #         waiting_for_rear = False
+            #         current_item = None
+            #
+            #     else:
+            #         # 3) 앞 센서 기록 없이 뒤 센서만 감지됨
+            #         #    → 앞 포토센서가 물건을 못 본 상황 (포토센서 에러)
+            #         print("[ERROR] PHOTO_SENSOR_ERROR: 앞 센서 미감지 + 뒤 센서 감지")
+            #         send_error_event(
+            #             manager_id=MANAGER_ID,
+            #             error_code="PHOTO_SENSOR_ERROR",
+            #             rule_id=None,
+            #             chute_id=None,
+            #             image_path=None,
+            #         )
+            elif line == "CHECK_0":
                 print("[SENSOR] 뒤 검수 센서 감지")
 
                 if waiting_for_rear and current_item is not None:
-                    # 1) 앞 센서 + 분류 + 서보까지 정상 동작했는데도
-                    #    뒤 검사 센서에 걸렸다 → 서보가 물건을 못 날린 것
-                    if current_item["sorted_ok"]:
-                        print("[ERROR] SERVO_ERROR: 분류/서보는 정상인데 뒤 센서에서 물체 감지")
-                        send_error_event(
-                            manager_id=MANAGER_ID,
-                            error_code="SERVO_ERROR",
-                            rule_id=None,
-                            chute_id=None,
-                            image_path=current_item["image_path"],
-                        )
-                    # 2) 앞 센서는 감지했지만 분류/서보가 정상적으로 안 됐는데
-                    #    뒤 센서에서 물체가 나왔다 → 카메라/인식 계열 문제로 간주
-                    else:
-                        print("[ERROR] CAMERA_ERROR: 앞 센서 감지 + 사진/인식 쪽 문제 추정")
-                        send_error_event(
-                            manager_id=MANAGER_ID,
-                            error_code="CAMERA_ERROR",
-                            rule_id=None,
-                            chute_id=None,
-                            image_path=current_item["image_path"],
-                        )
+                    # 앞 센서도 봤고, 뒤 센서도 물체를 본 상황 → SERVO_ERROR
+                    print("[ERROR] SERVO_ERROR: 앞/뒤 센서 모두 감지됨 → 물건이 끝까지 갔음")
+                    send_error_event(
+                        manager_id=MANAGER_ID,
+                        error_code="SERVO_ERROR",
+                        rule_id=None,
+                        chute_id=None,
+                        image_path=current_item["image_path"],
+                    )
 
-                    # 이 물건에 대한 검수 끝
                     waiting_for_rear = False
                     current_item = None
 
                 else:
-                    # 3) 앞 센서 기록 없이 뒤 센서만 감지됨
-                    #    → 앞 포토센서가 물건을 못 본 상황 (포토센서 에러)
+                    # 앞 센서 기록 없이 뒤 센서만 감지됨 → 포토센서 에러
                     print("[ERROR] PHOTO_SENSOR_ERROR: 앞 센서 미감지 + 뒤 센서 감지")
                     send_error_event(
                         manager_id=MANAGER_ID,
