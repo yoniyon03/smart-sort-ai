@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests  # pip install requests
 
-BASE_URL = "http://172.30.99.175:8080"
+BASE_URL = "https://smartparcel-api.azurewebsites.net"
 MANAGER_ID = 1
 
 

@@ -317,14 +317,10 @@ if __name__ == "__main__":
                                     ser.write(b"HOME\n")
 
                                 if ser is not None:
-                                    # 어떤 rule_info 를 썼는지 기억하려면 위에서 따로 저장해둬도 되고,
-                                    # 가장 마지막에 썼던 rule_info 를 하나 변수에 저장해둬도 돼.
-                                    # 여기서는 간단히 servo_deg 를 위에서 같이 빼왔다고 가정할게.
                                     if "servoDeg" in rule_info:
                                         angle = rule_info["servoDeg"]
                                         print(f"[SERVO] move to {angle} deg")
                                         ser.write(f"SERVO {angle}\n".encode("utf-8"))
-                                        # 응답 한번 읽어보기 (선택)
                                         try:
                                             reply = ser.readline().decode("utf-8", errors="ignore").strip()
                                             if reply:
