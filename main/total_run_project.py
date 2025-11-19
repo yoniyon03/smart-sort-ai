@@ -1,7 +1,6 @@
 from ultralytics import YOLO
 import cv2
 import os
-import glob
 import time
 import serial
 
@@ -19,7 +18,7 @@ from device_api import (
 # True = 엔터 눌러 수동 촬영 모드
 # 센서 없이 YOLO + 서버 + 서보 테스트 --> True
 # 센서 포함 테스트 --> False
-TEST_MODE = True
+TEST_MODE = False
 
 # --- 경로 / 환경 설정 ---
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +39,7 @@ os.makedirs(ERROR_TEXT_OUTPUT_FOLDER, exist_ok=True)
 os.makedirs(ERROR_COLOR_OUTPUT_FOLDER, exist_ok=True)
 
 # --- 아두이노 / 카메라 설정 ---
-SERIAL_PORT = "/dev/cu.usbmodem141011"   # 네 환경에 맞게 수정 (윈도우면 "COM3" 이런 식)
+SERIAL_PORT = "/dev/cu.usbmodem141011"   # 환경에 맞게 수정 (윈도우면 "COM3" 이런 식)
 BAUD_RATE = 115200
 CAMERA_INDEX = 0
 
@@ -76,45 +75,41 @@ def _sharpness_score(frame):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     return cv2.Laplacian(gray, cv2.CV_64F).var()
 
+# --- 센서로 사진 찍기 ---
+def capture_image_from_camera(cap, save_folder):
+    """센서가 0 들어왔을 때 카메라에서 여러 장 찍고 가장 선명한 한 장 저장"""
+    best_frame = None
+    best_score = -1
 
-# def capture_image_from_camera(cap, save_folder):
-#     """센서가 0 들어왔을 때 카메라에서 여러 장 찍고 가장 선명한 한 장 저장"""
-#     best_frame = None
-#     best_score = -1
-#
-#     N = 5
-#     for _ in range(N):
-#         ret, frame = cap.read()
-#         if not ret:
-#             continue
-#         score = _sharpness_score(frame)
-#         if score > best_score:
-#             best_score = score
-#             best_frame = frame
-#         time.sleep(0.005)
-#
-#     if best_frame is None:
-#         print("[ERROR] 카메라에서 프레임을 읽지 못했습니다.")
-#         # 카메라 타임아웃 에러 전송
-#         send_error_event(
-#             manager_id=MANAGER_ID,
-#             error_code="CAMERA_TIMEOUT",
-#             image_path=None,
-#         )
-#         return None
-#
-#     filename = f"capture_{int(time.time())}.jpg"
-#     save_path = os.path.join(save_folder, filename)
-#     cv2.imwrite(save_path, best_frame)
-#     print(f"[CAPTURE] 이미지 저장: {save_path}")
-#     return save_path
+    N = 5
+    for _ in range(N):
+        ret, frame = cap.read()
+        if not ret:
+            continue
+        score = _sharpness_score(frame)
+        if score > best_score:
+            best_score = score
+            best_frame = frame
+        time.sleep(0.005)
 
+    if best_frame is None:
+        print("[ERROR] 카메라에서 프레임을 읽지 못했습니다.")
+        # 카메라 타임아웃 에러 전송
+        send_error_event(
+            manager_id=MANAGER_ID,
+            error_code="CAMERA_TIMEOUT",
+            image_path=None,
+        )
+        return None
 
+    filename = f"capture_{int(time.time())}.jpg"
+    save_path = os.path.join(save_folder, filename)
+    cv2.imwrite(save_path, best_frame)
+    print(f"[CAPTURE] 이미지 저장: {save_path}")
+    return save_path
+
+# --- enter 키로 사진 찍기 ---
 def manual_capture_from_keyboard(cap, save_folder):
-    """
-    센서 없이 개발자가 직접 Enter 눌러서 테스트하는 모드.
-    'q' 입력 시 종료.
-    """
     print("==================================================")
     print("[TEST MODE] Enter → 사진 캡처")
     print("[TEST MODE] 'q' + Enter → 종료")
@@ -156,8 +151,8 @@ def manual_capture_from_keyboard(cap, save_folder):
         return save_path
 
 
+# YOLO + OCR + HSV 실행해서 텍스트/색상 정보 추출
 def process_image(image_path, conf_threshold=0.7, ocr_good_threshold=0.7):
-    """YOLO + OCR + HSV 실행해서 텍스트/색상 정보 추출"""
     if not os.path.exists(image_path):
         print(f"[ERROR] 이미지 파일을 찾을 수 없습니다: {image_path}")
         return None, None
@@ -267,9 +262,8 @@ def process_image(image_path, conf_threshold=0.7, ocr_good_threshold=0.7):
     return result.plot(), final_data
 
 
+# YOLO/OCR 결과 보고 폴더 분류 + 서버 전송 + 서보 제어까지 한 번에
 def classify_and_act(image_path, annotated_image, extracted_data, text_rules, color_rules, ser):
-    """YOLO/OCR 결과 보고 폴더 분류 + 서버 전송 + 서보 제어까지 한 번에"""
-
     detected_text = extracted_data.get("text")
     detected_text_conf = extracted_data.get("text_conf", 0.0)
     detected_color = extracted_data.get("color")
@@ -283,19 +277,17 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
     save_path = None
     is_success = False
     error_code = None
+    servo_error = False
+    servo_moved = False  # ← 항상 초기화
 
     base_name = os.path.basename(image_path)
     save_name = f"{os.path.splitext(base_name)[0]}_result.jpg"
 
-    # ─────────────────────────────────────
     # ① 텍스트 기준 정상/에러 분기
-    # ─────────────────────────────────────
     if detected_text and detected_text_conf >= OCR_CONF_THRESHOLD:
-        # 텍스트는 읽혔는데, 분류 규칙에 있는지 확인
         rule_info = text_rules.get(detected_text)
 
         if rule_info:
-            # ✅ 정상 텍스트 인식 + 규칙 있음
             save_path = os.path.join(OCR_OUTPUT_FOLDER, save_name)
             is_success = True
             print("[ROUTE] 정상 텍스트 결과 폴더로 저장")
@@ -305,10 +297,8 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
             servo_deg = rule_info.get("servoDeg")
 
         else:
-            # 텍스트는 읽었는데, 규칙에 없는 텍스트 → OCR_FAIL
             save_path = os.path.join(ERROR_TEXT_OUTPUT_FOLDER, save_name)
 
-            # 'UNKNOWN' 같은 라벨은 UNKNOWN_ERROR로 처리
             if detected_text.strip().upper() == "UNKNOWN":
                 error_code = "UNKNOWN_ERROR"
                 print("[ROUTE] UNKNOWN_ERROR: UNKNOWN 텍스트 라벨 감지")
@@ -316,15 +306,11 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
                 error_code = "OCR_FAIL"
                 print("[ROUTE] OCR_FAIL: 분류 규칙에 없는 텍스트 라벨")
 
-    # ─────────────────────────────────────
     # ② 색상 기준 정상/에러 분기
-    #    (텍스트가 없고, 색상만 가지고 분류하는 경우)
-    # ─────────────────────────────────────
     elif (not detected_text) and (detected_color in KNOWN_COLORS):
         rule_info = color_rules.get(detected_color)
 
         if rule_info:
-            # ✅ 정상 색상 인식 + 규칙 있음
             save_path = os.path.join(COLOR_OUTPUT_FOLDER, save_name)
             is_success = True
             print("[ROUTE] 정상 색상 결과 폴더로 저장")
@@ -333,15 +319,11 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
             chute_id = rule_info["chuteId"]
             servo_deg = rule_info.get("servoDeg")
         else:
-            # 색상은 읽었는데, 규칙에 없음 → 일단 UNKNOWN_ERROR로 통일
             save_path = os.path.join(ERROR_COLOR_OUTPUT_FOLDER, save_name)
             error_code = "UNKNOWN_ERROR"
             print("[ROUTE] UNKNOWN_ERROR: 분류 규칙에 없는 색상 라벨")
 
-    # ─────────────────────────────────────
-    # ③ 텍스트는 읽혔지만, 신뢰도 낮거나 marker_text low conf
-    #    → OCR_FAIL
-    # ─────────────────────────────────────
+    # ③ 텍스트는 읽혔지만 신뢰도 낮음
     elif (
         (detected_text and detected_text_conf < OCR_CONF_THRESHOLD)
         or any("marker_text" in s for s in low_conf_list)
@@ -350,10 +332,7 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
         error_code = "OCR_FAIL"
         print("[ROUTE] OCR_FAIL: OCR 신뢰도 낮음 / marker_text low confidence")
 
-    # ─────────────────────────────────────
-    # ④ 색상 쪽 이상 (예상 밖 색상/low conf)
-    #    → UNKNOWN_ERROR
-    # ─────────────────────────────────────
+    # ④ 색상 쪽 이상
     elif (
         (detected_color and detected_color not in KNOWN_COLORS)
         or any("marker_color" in s for s in low_conf_list)
@@ -362,32 +341,22 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
         error_code = "UNKNOWN_ERROR"
         print("[ROUTE] UNKNOWN_ERROR: 색상 정보 이상(예상 밖 색상 또는 low confidence)")
 
-    # ─────────────────────────────────────
-    # ⑤ 그 외 (마지막 fallback)
-    #    - had_text=True & text 없음 → 빈 라벨/읽기 불가 → UNKNOWN_ERROR
-    #    - had_color=True & color 없음 → UNKNOWN_ERROR
-    #    - 둘 다 false → NO_MARKER
-    # ─────────────────────────────────────
+    # ⑤ 기타 fallback
     else:
         if had_text and not detected_text:
             save_path = os.path.join(ERROR_TEXT_OUTPUT_FOLDER, save_name)
             error_code = "UNKNOWN_ERROR"
             print("[ROUTE] UNKNOWN_ERROR: marker_text는 있었으나 OCR 결과 없음(빈 라벨 등)")
-
         elif had_color and not detected_color:
             save_path = os.path.join(ERROR_COLOR_OUTPUT_FOLDER, save_name)
             error_code = "UNKNOWN_ERROR"
             print("[ROUTE] UNKNOWN_ERROR: marker_color는 있었으나 HSV 결과 없음")
-
         else:
-            # YOLO가 marker_text / marker_color 둘 다 못 본 경우 → NO_MARKER
             save_path = os.path.join(ERROR_ROOT, save_name)
             error_code = "NO_MARKER"
             print("[ROUTE] NO_MARKER: YOLO가 표식을 탐지하지 못함 (너무 빠르게 지나간 경우 등)")
 
-    # ─────────────────────────────────────
     # ⑥ 파일 저장 + 서버 통신 + 서보 제어
-    # ─────────────────────────────────────
     try:
         cv2.imwrite(save_path, annotated_image)
 
@@ -397,33 +366,53 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
             # --- 서보 제어 ---
             if servo_deg is not None:
                 if ser is None:
-                    # 서보 연결이 아예 안 된 상태 → SERVO_ERROR
                     print("[SERVO] 포트 미연결: SERVO_ERROR")
+                    servo_error = True
                     send_error_event(
                         manager_id=MANAGER_ID,
                         error_code="SERVO_ERROR",
-                        rule_id=rule_id,
-                        chute_id=chute_id,
+                        rule_id=None,
+                        chute_id=None,
                         image_path=save_path,
                     )
                 else:
                     try:
-                        print(f"[SERVO] move to {servo_deg} deg")
-                        ser.write(f"SERVO {servo_deg}\n".encode("utf-8"))
+                        # ───── 킥 모션 설정값 ─────
+                        KICK_DELTA = 30  # main_deg에서 이만큼 뒤로 당겼다가
+                        PRE_KICK_WAIT = 1.5  # main_deg 위치에서 기다릴 시간 (예: 1초)
+                        KICK_WAIT = 0.25  # 킥 사이사이 대기 시간
 
-                        # 물건 떨어질 시간
-                        time.sleep(0.5)
+                        main_deg = servo_deg
+                        back_deg = max(0, min(180, main_deg - KICK_DELTA))
 
-                        print("[SERVO] go HOME")
-                        ser.write(b"HOME\n")
+                        print(f"[SERVO] KICK START 준비 → main={main_deg}°, back={back_deg}°")
 
-                        # 응답 읽기 (SERVO_OK ...)
+                        # 1) 먼저 분류 각도로 이동 (예: 30도, 90도, 150도 등)
+                        print(f"[SERVO] → {main_deg}° (분류 위치 이동)")
+                        ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
+                        # ★ 이 상태에서 물건이 도착하길 1초 정도 기다림
+                        time.sleep(PRE_KICK_WAIT)
+
+                        # 2) 살짝 뒤로 당기기 (킥 준비)
+                        print(f"[SERVO] → {back_deg}° (kick back)")
+                        ser.write(f"SERVO {back_deg}\n".encode("utf-8"))
+                        time.sleep(KICK_WAIT)
+
+                        # 3) 다시 앞으로 밀기 (실제 킥!)
+                        print(f"[SERVO] → {main_deg}° (kick forward)")
+                        ser.write(f"SERVO {main_deg}\n".encode("utf-8"))
+                        time.sleep(KICK_WAIT)
+
+                        # 여기선 HOME 안 보냄 (초기화는 앞 센서 들어올 때 run loop에서 따로)
                         reply = ser.readline().decode("utf-8", errors="ignore").strip()
                         if reply:
                             print(f"[SERVO] from Arduino: {reply}")
+
+                        servo_moved = True
+
                     except Exception as e:
                         print(f"[SERVO] 명령 전송 중 오류: {e}")
-                        # 서보 관련 예외는 SERVO_ERROR로 보고
+                        servo_error = True
                         send_error_event(
                             manager_id=MANAGER_ID,
                             error_code="SERVO_ERROR",
@@ -432,8 +421,8 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
                             image_path=save_path,
                         )
 
-            # --- 서버로 sorting-result 전송 ---
-            if rule_id is not None and chute_id is not None:
+            # --- 정상 분류 이력 전송 (서보 에러 없을 때만) ---
+            if rule_id is not None and chute_id is not None and not servo_error:
                 send_sorting_result(
                     manager_id=MANAGER_ID,
                     rule_id=rule_id,
@@ -441,17 +430,18 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
                     image_path=save_path,
                 )
             else:
-                # (이 상황은 거의 없겠지만 방어적으로 UNKNOWN_ERROR)
-                if not error_code:
-                    error_code = "UNKNOWN_ERROR"
-                send_error_event(
-                    manager_id=MANAGER_ID,
-                    error_code=error_code,
-                    image_path=save_path,
-                )
+                if servo_error and not error_code:
+                    error_code = "SERVO_ERROR"
+                if error_code:
+                    send_error_event(
+                        manager_id=MANAGER_ID,
+                        error_code=error_code,
+                        rule_id=None,
+                        chute_id=None,
+                        image_path=save_path,
+                    )
 
         else:
-            # 분류 실패 케이스 → 에러 코드 필수로 하나 있어야 함
             print(f"[INFO] 예외 항목 이미지를 '{save_path}'에 저장했습니다.")
             if not error_code:
                 error_code = "UNKNOWN_ERROR"
@@ -459,21 +449,23 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
             send_error_event(
                 manager_id=MANAGER_ID,
                 error_code=error_code,
-                rule_id=rule_id,
-                chute_id=chute_id,
+                rule_id=None,
+                chute_id=None,
                 image_path=save_path,
             )
 
     except Exception as e:
         print(f"[ERROR] 결과 이미지 저장 실패: {e}")
-        # 저장 자체가 안 되면, 이미지 없이 UNKNOWN_ERROR 날려줌
         send_error_event(
             manager_id=MANAGER_ID,
             error_code="UNKNOWN_ERROR",
-            rule_id=rule_id,
-            chute_id=chute_id,
+            rule_id=None,
+            chute_id=None,
             image_path=None,
         )
+
+    # 🔚 항상 3개 값 리턴
+    return is_success, servo_moved, save_path
 
 
 if __name__ == "__main__":
@@ -482,7 +474,6 @@ if __name__ == "__main__":
     TEXT_RULES, COLOR_RULES = build_rule_maps(setup_json)
 
     # 서버에서 받은 규칙을 기준으로 "정상 텍스트/색상 목록" 자동 세팅
-    global KNOWN_TEXTS, KNOWN_COLORS
     KNOWN_TEXTS = list(TEXT_RULES.keys())
     KNOWN_COLORS = list(COLOR_RULES.keys())
 
@@ -521,6 +512,16 @@ if __name__ == "__main__":
     print("[INFO] EXPOSURE:", cap.get(cv2.CAP_PROP_EXPOSURE))
     print("[INFO] GAIN    :", cap.get(cv2.CAP_PROP_GAIN))
 
+    REAR_TIMEOUT_SEC = 1.0  # 뒤 센서 기다릴 최대 시간 (1초 예시)
+
+    COOLDOWN = 0.5
+    last_trigger_time = 0.0
+
+    # ★ 현재 물건 상태 (앞 센서가 본 직후부터 뒤 센서 검수까지)
+    current_item = None  # {"sorted_ok": bool, "image_path": str}
+    waiting_for_rear = False
+    rear_deadline = 0.0
+
     # 3) 아두이노 READY 기다리기
     if ser is not None:
         print("[INFO] Arduino 'READY' 신호를 기다리는 중...")
@@ -537,23 +538,15 @@ if __name__ == "__main__":
     print(f"[INFO] 센서 신호를 대기합니다. (Arduino에서 '0' 들어오면 촬영 + 분류 실행)")
     print("==================================================")
 
-    COOLDOWN = 0.5
-    last_trigger_time = 0.0
-
     try:
         while True:
-            # ─────────────────────────────
-            # ① TEST_MODE (수동 촬영 모드)
-            # ─────────────────────────────
+            # ① TEST_MODE (수동 촬영)
             if TEST_MODE:
-                # 센서 안 쓰고, 엔터 칠 때마다 한 장씩 촬영 → 바로 분류
                 image_path = manual_capture_from_keyboard(cap, WATCH_FOLDER)
                 if not image_path:
-                    # None이면 q 눌렀거나 오류 → 살짝 쉬고 계속 / 원하면 break로 바꿔도 됨
                     time.sleep(0.1)
                     continue
 
-                # YOLO/OCR 처리
                 annotated_image, extracted_data = process_image(
                     image_path,
                     conf_threshold=YOLO_CONF_THRESHOLD,
@@ -565,7 +558,6 @@ if __name__ == "__main__":
                 print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
                 print(extracted_data)
 
-                # 분류 + 서버 전송 + (서보 제어는 ser 연결돼 있으면 실행)
                 classify_and_act(
                     image_path,
                     annotated_image,
@@ -574,55 +566,117 @@ if __name__ == "__main__":
                     COLOR_RULES,
                     ser,
                 )
-
-                # 수동 모드는 한 바퀴 돌고 다시 while 처음으로
                 continue
 
-            # ─────────────────────────────
             # ② 자동 센서 모드
-            # ─────────────────────────────
-            # 센서 신호 읽기
             line = ser.readline().decode("utf-8", errors="ignore").strip() if ser else ""
             now = time.time()
 
+            # ★ 뒤 센서 타임아웃 처리 (원하면 사용)
+            if waiting_for_rear and now > rear_deadline:
+                print("[CHECK] 뒤 센서 타임아웃 → 검수 종료")
+                waiting_for_rear = False
+                current_item = None
+
+            # 디버그용: 들어오는 모든 문자열 찍어보기
             if line:
-                if line == "0":
-                    if now - last_trigger_time > COOLDOWN:
-                        last_trigger_time = now
-                        print("[SIGNAL] 센서 0 감지 → 촬영 + 분류 시작")
+                print(f"[SERIAL-DEBUG] got line: {repr(line)}")
 
-                        # ① 사진 캡처
-                        image_path = capture_image_from_camera(cap, WATCH_FOLDER)
-                        if not image_path:
-                            continue
+            # ───────────── 앞 포토센서 (감지용) ─────────────
+            if line == "0":  # 앞 센서에서 오는 신호
+                if now - last_trigger_time > COOLDOWN:
+                    last_trigger_time = now
+                    print("[SIGNAL] 앞 센서 감지 → 촬영 + 분류 시작")
 
-                        # ② YOLO/OCR 처리
-                        annotated_image, extracted_data = process_image(
-                            image_path,
-                            conf_threshold=YOLO_CONF_THRESHOLD,
+                    # 센서 들어올 때마다 HOME으로 초기화
+                    if ser is not None:
+                        print("[SERVO] sensor triggered → HOME (초기화)")
+                        ser.write(b"HOME\n")
+                        time.sleep(0.05)
+
+                    # ① 사진 캡처
+                    image_path = capture_image_from_camera(cap, WATCH_FOLDER)
+                    if not image_path:
+                        # 여기서 카메라 타임아웃 에러는 이미 전송됨
+                        continue
+
+                    # ② YOLO/OCR 처리
+                    annotated_image, extracted_data = process_image(
+                        image_path,
+                        conf_threshold=YOLO_CONF_THRESHOLD,
+                    )
+                    if annotated_image is None:
+                        print("[WARN] 이미지 처리 실패")
+                        continue
+
+                    print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
+                    print(extracted_data)
+
+                    # ③ 분류 + 서버 전송 + 서보 제어
+                    is_success, servo_moved, saved_path = classify_and_act(
+                        image_path,
+                        annotated_image,
+                        extracted_data,
+                        TEXT_RULES,
+                        COLOR_RULES,
+                        ser,
+                    )
+
+                    # ★ 이 물건에 대한 상태를 저장 → 뒤 센서가 나중에 검사
+                    current_item = {
+                        "sorted_ok": bool(is_success and servo_moved),  # 분류 성공 + 서보까지 보냄
+                        "image_path": saved_path,
+                    }
+                    waiting_for_rear = True
+                    rear_deadline = time.time() + REAR_TIMEOUT_SEC
+
+            # ───────────── 뒤 포토센서 (검수용) ─────────────
+            elif line == "CHECK_0":  # 아두이노에서 검수 센서용으로 보내는 문자열
+                print("[SENSOR] 뒤 검수 센서 감지")
+
+                if waiting_for_rear and current_item is not None:
+                    # 1) 앞 센서 + 분류 + 서보까지 정상 동작했는데도
+                    #    뒤 검사 센서에 걸렸다 → 서보가 물건을 못 날린 것
+                    if current_item["sorted_ok"]:
+                        print("[ERROR] SERVO_ERROR: 분류/서보는 정상인데 뒤 센서에서 물체 감지")
+                        send_error_event(
+                            manager_id=MANAGER_ID,
+                            error_code="SERVO_ERROR",
+                            rule_id=None,
+                            chute_id=None,
+                            image_path=current_item["image_path"],
                         )
-                        if annotated_image is None:
-                            print("[WARN] 이미지 처리 실패")
-                            continue
-
-                        print(f"\n--- Final Data for {os.path.basename(image_path)} ---")
-                        print(extracted_data)
-
-                        # ③ 분류 + 서버 전송 + 서보 제어
-                        classify_and_act(
-                            image_path,
-                            annotated_image,
-                            extracted_data,
-                            TEXT_RULES,
-                            COLOR_RULES,
-                            ser,
+                    # 2) 앞 센서는 감지했지만 분류/서보가 정상적으로 안 됐는데
+                    #    뒤 센서에서 물체가 나왔다 → 카메라/인식 계열 문제로 간주
+                    else:
+                        print("[ERROR] CAMERA_ERROR: 앞 센서 감지 + 사진/인식 쪽 문제 추정")
+                        send_error_event(
+                            manager_id=MANAGER_ID,
+                            error_code="CAMERA_ERROR",
+                            rule_id=None,
+                            chute_id=None,
+                            image_path=current_item["image_path"],
                         )
 
-                elif line.startswith("SERVO_OK"):
-                    print(f"[SERIAL] from Arduino: {line}")
-                # 필요하면 '1' 신호 등도 처리
+                    # 이 물건에 대한 검수 끝
+                    waiting_for_rear = False
+                    current_item = None
 
-            # 너무 바쁘지 않게 살짝 딜레이
+                else:
+                    # 3) 앞 센서 기록 없이 뒤 센서만 감지됨
+                    #    → 앞 포토센서가 물건을 못 본 상황 (포토센서 에러)
+                    print("[ERROR] PHOTO_SENSOR_ERROR: 앞 센서 미감지 + 뒤 센서 감지")
+                    send_error_event(
+                        manager_id=MANAGER_ID,
+                        error_code="PHOTO_SENSOR_ERROR",
+                        rule_id=None,
+                        chute_id=None,
+                        image_path=None,
+                    )
+
+            elif line.startswith("SERVO_OK"):
+                print(f"[SERIAL] from Arduino: {line}")
+
             time.sleep(0.01)
 
     except KeyboardInterrupt:

@@ -5,7 +5,8 @@ from datetime import datetime
 import requests  # pip install requests
 
 BASE_URL = "https://smartparcel-api.azurewebsites.net"
-MANAGER_ID = 1
+# 계정에 맞게 id 번호 수정
+MANAGER_ID = 2
 
 
 def now_iso_with_offset():
