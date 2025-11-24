@@ -3,6 +3,7 @@ import cv2
 import os
 import time
 import serial
+import torch
 
 from utils.ocr_module import run_ocr
 from utils.hsv_module import get_color
@@ -14,6 +15,13 @@ from device_api import (
     send_sorting_result,
     send_error_event,
 )
+
+def pick_device():
+    if torch.cuda.is_available():
+        return "cuda"
+    if torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 
 # True = 엔터 눌러 수동 촬영 모드
 # 센서 없이 YOLO + 서버 + 서보 테스트 --> True
@@ -59,7 +67,10 @@ if not os.path.exists(TRAINED_MODEL_PATH):
     exit()
 
 print("[INFO] Loading trained YOLO model...")
+DEVICE = pick_device()
+print(f"[INFO] Using device: {DEVICE}")
 model = YOLO(TRAINED_MODEL_PATH)
+model.to(DEVICE)
 CLASS_NAMES = model.names
 print(f"[INFO] Model loaded. Classes: {CLASS_NAMES}")
 
@@ -107,6 +118,26 @@ def capture_image_from_camera(cap, save_folder):
     cv2.imwrite(save_path, best_frame)
     print(f"[CAPTURE] 이미지 저장: {save_path}")
     return save_path
+
+    # # 버퍼 비우기: 최신 프레임으로 갱신
+    # for _ in range(10):
+    #     cap.grab()
+    #
+    # ret, frame = cap.read()
+    # if not ret or frame is None:
+    #     print("[ERROR] 카메라 프레임 read 실패")
+    #     send_error_event(
+    #         manager_id=MANAGER_ID,
+    #         error_code="CAMERA_TIMEOUT",
+    #         image_path=None,
+    #     )
+    #     return None
+    #
+    # filename = f"capture_{int(time.time())}.jpg"
+    # save_path = os.path.join(save_folder, filename)
+    # cv2.imwrite(save_path, frame)
+    # print(f"[CAPTURE] 최신 프레임 저장: {save_path}")
+    # return save_path
 
 # --- enter 키로 사진 찍기 ---
 def manual_capture_from_keyboard(cap, save_folder):
@@ -513,6 +544,12 @@ if __name__ == "__main__":
         ser = None
 
     cap = cv2.VideoCapture(CAMERA_INDEX)
+
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_FPS, 60)
+
     if not cap.isOpened():
         print(f"[ERROR] {CAMERA_INDEX}번 카메라를 열 수 없습니다.")
 
