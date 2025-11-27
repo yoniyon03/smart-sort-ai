@@ -89,6 +89,10 @@ def _sharpness_score(frame):
 # --- 센서로 사진 찍기 ---
 def capture_image_from_camera(cap, save_folder):
     """센서가 0 들어왔을 때 카메라에서 여러 장 찍고 가장 선명한 한 장 저장"""
+
+    for _ in range(3):
+        cap.grab()
+
     best_frame = None
     best_score = -1
 
@@ -414,7 +418,7 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
                         # ① 90도 이하: 5초 후 0도로 복귀
                         # ==========================
                         if servo_deg <= 90:
-                            PRE_KICK_WAIT = 5
+                            PRE_KICK_WAIT = 2
 
                             print(f"[SERVO] SIMPLE MOVE → main={main_deg}°, then HOME after {PRE_KICK_WAIT}s")
 
@@ -432,7 +436,7 @@ def classify_and_act(image_path, annotated_image, extracted_data, text_rules, co
                         # ② 90도 초과: 킥 모션 유지
                         # ==========================
                         else:
-                            PRE_KICK_WAIT = 10  # 항상 8초
+                            PRE_KICK_WAIT = 6  # 항상 초
                             KICK_DELTA = 30  # 항상 30도
                             KICK_WAIT = 0.25
 
@@ -550,6 +554,12 @@ if __name__ == "__main__":
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     cap.set(cv2.CAP_PROP_FPS, 60)
 
+    print("[INFO] BUFFERSIZE  :", cap.get(cv2.CAP_PROP_BUFFERSIZE))
+    print("[INFO] FRAMEWIDTH  :", cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    print("[INFO] FRAMEHEIGHT :", cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print("[INFO] FPS         :", cap.get(cv2.CAP_PROP_FPS))
+
+
     if not cap.isOpened():
         print(f"[ERROR] {CAMERA_INDEX}번 카메라를 열 수 없습니다.")
 
@@ -564,14 +574,16 @@ if __name__ == "__main__":
         exit()
 
     # 카메라 설정 (필요하면 조정)
-    cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
-    cap.set(cv2.CAP_PROP_FOCUS, 0)
-    cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
-    cap.set(cv2.CAP_PROP_EXPOSURE, -10)
-    cap.set(cv2.CAP_PROP_GAIN, 4)
-
-    print("[INFO] EXPOSURE:", cap.get(cv2.CAP_PROP_EXPOSURE))
-    print("[INFO] GAIN    :", cap.get(cv2.CAP_PROP_GAIN))
+    # cap.set(cv2.CAP_PROP_AUTOFOCUS, 0)
+    # cap.set(cv2.CAP_PROP_FOCUS, 0)
+    # cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
+    # cap.set(cv2.CAP_PROP_EXPOSURE, -10)
+    # cap.set(cv2.CAP_PROP_GAIN, 4)
+    #
+    # print("[INFO] AUTOFOCUS:", cap.get(cv2.CAP_PROP_AUTOFOCUS))
+    # print("[INFO] FOCUS    :", cap.get(cv2.CAP_PROP_FOCUS))
+    # print("[INFO] EXPOSURE :", cap.get(cv2.CAP_PROP_EXPOSURE))
+    # print("[INFO] GAIN     :", cap.get(cv2.CAP_PROP_GAIN))
 
     REAR_TIMEOUT_SEC = 1.0  # 뒤 센서 기다릴 최대 시간 (1초 예시)
 
@@ -770,7 +782,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n[INFO] 사용자가 종료했습니다.")
     finally:
-        print("[INFO] 자원 정리 중...")
         if ser is not None:
             try:
                 ser.write(b"HOME\n")
