@@ -3,57 +3,59 @@ import cv2
 import os
 import numpy as np
 
+# [초기화] PaddleOCR 모델 로드
+# OCR 모델은 로딩하는 데 시간이 오래 걸리므로
+# 프로그램 시작 시 딱 한 번만 전역 변수로 로드
 try:
     print("[INFO] Loading PaddleOCR 'korean' model...")
     ocr = PaddleOCR(
-        lang='korean',
+        lang='en',
         use_angle_cls=True
     )
-    print("[INFO] PaddleOCR model loaded successfully.")
+    print("[INFO] PaddleOCR model loaded successfully")
 except Exception as e:
     print(f"[ERROR] Failed to load PaddleOCR model: {e}")
     ocr = None
 
 
+# PaddleOCR 라이브러리에 이미지를 실제로 집어넣고 결과를 받아오는 함수
+# 입력: 이미지 배열 (BGR)
+# 출력: [(텍스트, 신뢰도), (텍스트, 신뢰도), ...] 형태의 리스트
 def _run_ocr_on_image(image_array):
-    """ PaddleOCR에 이미지를 한 번 넣고 (text, score) 리스트를 뽑아오는 가장 낮은 레벨 함수
-    image_array: BGR 또는 RGB ndarray
-    """
     if ocr is None:
         return []
 
+    # 실제 예측 수행
     result = ocr.predict(input=image_array)
     extracted_results = []
 
     try:
+        # 결과 유효한 지 확인
         if result and isinstance(result, list) and len(result) > 0:
             result_data = result[0]
 
-            # 새 포맷: dict 안에 rec_texts / rex_scores
+            # case 1: PaddleOCR 포맷 (딕셔너리 형태)
             if isinstance(result_data, dict) and 'rec_texts' in result_data and 'rec_scores' in result_data:
                 for text, confidence in zip(result_data['rec_texts'], result_data['rec_scores']):
                     extracted_results.append((text, confidence))
 
-            # 옛날 포맷 대비
+            # case 2: PaddleOCR 포맷 (리스트 형태)
             elif isinstance(result_data, list):
                 for line_data in result_data:
+                    # line_data: [ [좌표], ('텍스트', 신뢰도) ]
                     text = line_data[1][0]
                     confidence = line_data[1][1]
                     extracted_results.append((text, confidence))
 
     except Exception as e:
         print(f"[ERROR] Failed to parse OCR result: {e}")
-        print(f"[ERROR] Crashing line_data was: {result}")  # 오류 내용 출력
+        print(f"[ERROR] Crashing line_data was: {result}")
 
     return extracted_results
 
 
-# 전처리 함수 (약하게/강하게)
+# OCR 인식률을 높이기 위해 이미지 전처리
 def _preprocess_for_cor(image_bgr, strong=False):
-    """
-    OCR 전에 글자 가독성 높여주는 전처리
-    strong=True이면 이진화 + 조금 더 센 보정
-    """
     if image_bgr is None or image_bgr.size == 0:
         return image_bgr
 
@@ -61,50 +63,49 @@ def _preprocess_for_cor(image_bgr, strong=False):
     gray = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
 
-    # 🔽 target_h를 320 -> 260 정도로만 (조금 덜 키워서 연산량 살짝 줄이기)
+    # 2. 해상도 조정 (작은 스티커 크기는 뭉개지기 쉬움 --> 강제로 키우기)
     target_h = 260
     if h < target_h:
         scale = target_h / float(h)
         gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
 
-    # 2. 대비 향상 (CLAHE)
+    # 3. 대비 향상
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
     gray = clahe.apply(gray)
 
-    # 3. 강한 모드: adaptive threshold로 첫 글자만 뽑기
+    # 이진화 및 두께 보정 (배경 노이즈가 심하거나 글자가 너무 얇을 때)
     if strong:
+        # 그림자만 있어도 글자만 검은색/흰색으로 분리
         gray = cv2.adaptiveThreshold(
             gray, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
             25, 15
         )
-        # 살짝 팽창시켜 글자 두껍게
+
         kernel = np.ones((2, 2), np.uint8)
         gray = cv2.dilate(gray, kernel, iterations=1)
 
-    # 3 채널로 다시 변환해 PaddleOCR로 넣기
+    # PaddleOCR은 3채널 이미지 --> BGR로 다시 변환
     proc = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
     return proc
 
 
-# 각도 리스트 + 전처리까지 포함한 한 번의 시도
+# 이미지를 여러 각도로 회전시켜가며 OCR을 시도 (가장 높은 신뢰도가 나온 결과를 선택)
 def _try_ocr_with_angles(image_bgr, angles, strong=False):
-    """
-    여러 각도에서 OCR을 돌려보고, 그 중 최고 신뢰도 결과 하나만 반환
-    strong=True이면 강한 전처리 모드
-    """
     (h, w) = image_bgr.shape[:2]
     center = [w // 2, h // 2]
 
     best_text = None
     best_conf = 0.0
 
-    # 🔽 “이 이상이면 더 돌려도 의미 없다” 기준
+    # 최적화: 신뢰도 이 값 이상 나오면 다른 각도는 시도하지 않고 즉시 종료
     EARLY_BREAK_CONF = 0.98
 
     for angle in angles:
         rotated = image_bgr
+
+        # 이미지를 지정한 각도만큼 회전
         if angle != 0:
             M = cv2.getRotationMatrix2D(center, angle, 1.0)
             rotated = cv2.warpAffine(
@@ -115,11 +116,14 @@ def _try_ocr_with_angles(image_bgr, angles, strong=False):
 
         # 전처리 적용
         processed = _preprocess_for_cor(rotated, strong=strong)
+
+        # OCR 실행
         results = _run_ocr_on_image(processed)
 
         if not results:
             continue
 
+        # 이번 각도에서 나온 결과 중 가장 신뢰도 높은 결과 찾기
         current_best_conf = 0.0
         current_best_text = ""
         for text, confidence in results:
@@ -134,7 +138,7 @@ def _try_ocr_with_angles(image_bgr, angles, strong=False):
             best_conf = current_best_conf
             best_text = current_best_text
 
-        # 이미 충분히 높은 신뢰도면 남은 각도는 안 돌리고 탈출
+        # 이미 충분히 높은 신뢰도라면 남은 각도는 돌리지 않고 종료
         if best_conf >= EARLY_BREAK_CONF:
             print(f"[DEBUG-OCR] 신뢰도 {best_conf:.2f} ≥ {EARLY_BREAK_CONF:.2f}, "
                   f"나머지 각도는 스킵합니다.")
@@ -142,14 +146,8 @@ def _try_ocr_with_angles(image_bgr, angles, strong=False):
 
     return best_text, best_conf
 
+# 메인 함수
 def run_ocr(image_path, multi_angle=False):
-    """
-    메인 호출용
-    이미지 경로를 받아 OCR을 수행하고 (최고 텍스트, 최고 신뢰도)를 반환
-    multi_angle=False : 빠른 시도 1번 (0도 / 약한 전처리)
-    multi_angle=True  : 1단계(빠른 시도) 후, 신뢰도 낮으면
-                        2단계(강한 전처리 + 다각도 TTA)까지 돌림
-    """
     if not os.path.exists(image_path):
         print(f"[ERROR] OCR image file not found: {image_path}")
         return None, 0.0
@@ -159,7 +157,7 @@ def run_ocr(image_path, multi_angle=False):
         print(f"[ERROR] cv2가 이미지를 읽지 못했습니다: {image_path}")
         return None, 0.0
 
-    # 1단계: 빠른 약한 전처리 + 0도만
+    # 1단계: 빠른 약한 전처리 + 원본(0도) 검사
     print("[DEBUG-OCR] 1단계: fast pass (angle=0, weak preprocess)")
     best_text, best_conf = _try_ocr_with_angles(
         image_bgr=image,
@@ -172,7 +170,7 @@ def run_ocr(image_path, multi_angle=False):
         return best_text, best_conf
 
     # 1단계에서 이미 충분히 잘 나온 경우 2단계 스킵
-    FAST_GOOD_THRESHOLD = 0.70  # 0.8 이상이면 그냥 이 결과 믿고 끝내기
+    FAST_GOOD_THRESHOLD = 0.70
     if best_conf >= FAST_GOOD_THRESHOLD:
         print(f"[DEBUG-OCR] 1단계 신뢰도 {best_conf:.2f} ≥ {FAST_GOOD_THRESHOLD:.2f}, "
               f"2단계 strong multi-angle 생략.")
@@ -181,7 +179,7 @@ def run_ocr(image_path, multi_angle=False):
     # 2단계: 신뢰도가 낮을 때만 강한 모드 + 다각도
     print("[DEBUG-OCR] 신뢰도 낮음 -> 2단계 strong multi-angle 시도")
 
-    # 각도 범위 줄이기: [-20, -10, 0, 10, 20] → [-15, 0, 15]
+    # 세 방향으로 돌려보면서 적용
     angles_second_stage = [-15, 0, 15]
 
     text2, conf2 = _try_ocr_with_angles(
@@ -190,6 +188,7 @@ def run_ocr(image_path, multi_angle=False):
         strong=True
     )
 
+    # 2단계 결과가 더 좋으면 갱신
     if conf2 > best_conf:
         best_text, best_conf = text2, conf2
 
