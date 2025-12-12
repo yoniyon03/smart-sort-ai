@@ -8,12 +8,10 @@ import requests  # pip install requests
 BASE_URL = "https://smartparcel-api.azurewebsites.net"
 MANAGER_ID = 3  # 계정에 맞게 id 번호 수정
 
-# 현재 시간을 ISO 8601 형식 문자열로 반환 (예: "2024-05-01T12:34:56+09:00")
 def now_iso_with_offset():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
-# 서버로부터 받은 응답을 보기 좋게 터미널에 출력하는 디버깅용 함수
-# 성공 여부(Status Code)와 내용(JSON) 출력
+# 서버로부터 받은 응답 출력
 def pretty(resp, title=""):
     print(f"\n=== {title} ===")
     print("Status:", resp.status_code)
@@ -27,12 +25,13 @@ def pretty(resp, title=""):
         print(resp.text)
 
 
-# 서버에서 '분류 규칙' 데이터 가져옴
+# 서버에서 분류 규칙 가져옴
 def fetch_setup(manager_id: int = MANAGER_ID):
     url = f"{BASE_URL}/api/devices/setup"
     try:
         # 서버에 GET 요청 전송
         resp = requests.get(url, params={"managerId": manager_id}, timeout=10)
+
     except Exception as e:
         print(f"[ERROR] fetch_setup() 요청 실패: {e}")
         return None
@@ -44,12 +43,9 @@ def fetch_setup(manager_id: int = MANAGER_ID):
 
     pretty(resp, "GET /api/devices/setup (OK)")
 
-    # JSON 데이터를 파이썬 딕셔너리로 변환해서 반환
     outer = resp.json()
     return outer.get("data")
 
-
-# 서버에서 받은 복잡한 JSON 데이터를 빠르게 쓸 수 있도록 딕셔너리 형태로 정리
 def build_rule_maps(setup_json):
     text_rules = {}
     color_rules = {}
@@ -57,20 +53,17 @@ def build_rule_maps(setup_json):
     if not setup_json:
         return text_rules, color_rules
 
-    # setup_json 안에 있는 rules 리스트
     rules = setup_json.get("rules", [])
 
     for rule in rules:
-        rid = rule.get("id") # 규칙 ID
-        input_type = (rule.get("inputType") or "").upper() # TEXT인지 COLOR인지
-        label = rule.get("inputValue") # 감지할 값
-        chutes = rule.get("chutes", []) # 보낼 목적지 (쓔터 정보)
+        rid = rule.get("id")
+        input_type = (rule.get("inputType") or "").upper()
+        label = rule.get("inputValue")
+        chutes = rule.get("chutes", [])
 
-        # 필수 정보 하나라도 없으면 건너뛰기
         if not (rid and input_type and label and chutes):
             continue
 
-        # 첫 번째 슈터 정보 사용
         chute = chutes[0]
         chute_id = chute.get("id")
         servo_deg = chute.get("servoDeg")
@@ -78,14 +71,12 @@ def build_rule_maps(setup_json):
         if not chute_id:
             continue
 
-        # 정리된 정보 묶음
         info = {
             "ruleId": rid,
             "chuteId": chute_id,
             "servoDeg": servo_deg,
         }
 
-        # 딕셔너리에 저장
         if input_type == "TEXT":
             text_rules[label] = info
         elif input_type == "COLOR":
@@ -96,7 +87,7 @@ def build_rule_maps(setup_json):
     return text_rules, color_rules
 
 
-# 물건 분류가 '성공'했을 때, 그 결과를 서버에 보고 (사진 파일도 같이 업로드)
+# 결과 서버로 전송
 def send_sorting_result(
     manager_id: int,
     rule_id: int,
@@ -105,7 +96,6 @@ def send_sorting_result(
 ):
     url = f"{BASE_URL}/api/devices/events/sorting-result"
 
-    # 서버로 보낼 데이터 (JSON)
     payload_obj = {
         "managerId": manager_id,
         "ruleId": rule_id,
@@ -113,12 +103,10 @@ def send_sorting_result(
         "processedAt": now_iso_with_offset(),
     }
 
-    # 파일 업로드를 위한 설정
     files = {
         "payload": ("payload", json.dumps(payload_obj), "application/json"),
     }
 
-    # 이미지 파일 있으면 열어서 files에 추가
     if image_path:
         try:
             guessed = mimetypes.guess_type(image_path)[0] or "application/octet-stream"
@@ -131,14 +119,13 @@ def send_sorting_result(
             print(f"[WARN] send_sorting_result: 이미지 파일을 찾을 수 없습니다: {image_path}")
 
     try:
-        # POST 요청 전송
         resp = requests.post(url, files=files, timeout=30)
         pretty(resp, "POST /api/devices/events/sorting-result")
     except Exception as e:
         print(f"[ERROR] send_sorting_result 요청 실패: {e}")
 
 
-# 분류 '실패'나 '에러' 상황을  서버에 보고
+# 에러/오류 서버로 전송
 def send_error_event(
     manager_id: int,
     error_code: str,

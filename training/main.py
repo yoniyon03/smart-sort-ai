@@ -1,27 +1,21 @@
-# 학습용 - 전이학습 코드
-
 from ultralytics import YOLO
 import torch, os
 
-# 코드를 실행하는 컴퓨터 OS 파악해 훈련에 가장 빠른 장치 선택
 def pick_device():
     if torch.cuda.is_available():
         return "cuda"
-    # Apple Silicon(M1/M2/M3)
     if torch.backends.mps.is_available():
         return "mps"
     return "cpu"
 
 def main():
-    # dataset 폴더에 있는 이미지를 AI에게 보여줌
     data_yaml = "./data.yaml"
     device = pick_device()
     print(f"[INFO] Using device: {device}")
 
-    # 1) 사전학습 가중치 불러오기 (COCO로 학습된 초경량 모델)
     model = YOLO("yolov8n.pt")
 
-    # 2) 전이학습
+    # 전이학습
     results = model.train(
         data=data_yaml,
         imgsz=960,          # 640 --> 960 수정 (이미지 크기 너무 작으면 인식 잘 안 됨)
@@ -33,18 +27,16 @@ def main():
     )
     print("[INFO] Train done. Best metrics:", results.results_dict)
 
-    # 3) 검증
     val_metrics = model.val(data=data_yaml, device=device)
     print("[INFO] Val mAP50-95:", val_metrics.box.map)
 
-    # 4) 예측 테스트
-    test_source = "./dataset/images/val"   # 샘플로 val 폴더에 대해 예측
+    test_source = "./dataset/images/val"
     preds = model.predict(
         source=test_source,
         conf=0.25,
         iou=0.5,
         device=device,
-        save=True,         # runs/detect/predict 폴더에 결과 이미지 저장
+        save=True,
         project="runs",
         name="quick_check",
         exist_ok=True
