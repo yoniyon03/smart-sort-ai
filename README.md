@@ -1,6 +1,6 @@
 # 🧠 SmartParcel AI — 표식 인식 및 자동 분류 비전 파이프라인
 
-> **SmartParcel AI Vision Module** · 2025-2 캡스톤디자인  
+> **SmartParcel AI Vision Module** · 
 > YOLOv8n 객체 탐지 + PaddleOCR 텍스트 인식 + OpenCV HSV 색상 분석을 통해 물품 표식을 인식하고, 동적 분류 기준에 연결하는 AI 모듈
 
 [통합 프로젝트](https://github.com/yoniyon03/smart-sort) · [웹 대시보드](https://github.com/yoniyon03/smart-sort-web) · [Arduino](https://github.com/yoniyon03/smart-sort-arduino)
